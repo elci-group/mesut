@@ -1,0 +1,16 @@
+[package]
+name = "mesut-scheduler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Scheduling policy for Mesut"
+
+[dependencies]
+mesut-core.workspace = true
+mesut-executor.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true

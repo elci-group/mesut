@@ -1,0 +1,32 @@
+[package]
+name = "mesut"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified execution orchestration for Rust"
+
+[dependencies]
+mesut-core.workspace = true
+mesut-executor.workspace = true
+mesut-router.workspace = true
+mesut-scheduler.workspace = true
+mesut-runtime.workspace = true
+mesut-observe.workspace = true
+mesut-tokio.workspace = true
+mesut-rayon.workspace = true
+mesut-blocking.workspace = true
+tokio = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "phase1_basic"
+path = "examples/phase1_basic.rs"

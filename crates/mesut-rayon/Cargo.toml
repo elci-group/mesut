@@ -1,0 +1,19 @@
+[package]
+name = "mesut-rayon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rayon integration for Mesut"
+
+[dependencies]
+mesut-core.workspace = true
+mesut-executor.workspace = true
+rayon.workspace = true
+num_cpus.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+uuid.workspace = true

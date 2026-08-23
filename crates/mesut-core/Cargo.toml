@@ -1,0 +1,15 @@
+[package]
+name = "mesut-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core work model, identifiers, and lifecycle for Mesut"
+
+[dependencies]
+uuid.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
