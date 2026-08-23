@@ -3,9 +3,11 @@ use mesut_executor::ArcExecutor;
 
 pub use classification::*;
 pub use decision::*;
+pub use adaptive::*;
 
 mod classification;
 mod decision;
+mod adaptive;
 
 /// Router that determines execution substrate for work.
 #[derive(Clone)]

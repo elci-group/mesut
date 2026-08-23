@@ -8,8 +8,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use config::*;
+pub use pipeline::*;
+pub use native::*;
 
 mod config;
+mod pipeline;
+mod native;
 
 /// The Mesut runtime orchestrator.
 pub struct MesuT {
