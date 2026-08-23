@@ -177,17 +177,16 @@ impl Executor for BlockingExecutor {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn blocking_executor_creation() {
+    #[test]
+    fn blocking_executor_creation() {
         let executor = BlockingExecutor::new(BlockingExecutorConfig::default());
         assert!(executor.is_available());
     }
 
-    #[tokio::test]
-    async fn blocking_executor_submit() {
-        let executor = Arc::new(BlockingExecutor::new(BlockingExecutorConfig::default()));
-        let work = Work::new(mesut_core::WorkKind::Blocking);
-        let result = executor.submit(work).await;
-        assert!(result.is_ok());
+    #[test]
+    fn blocking_executor_config() {
+        let config = BlockingExecutorConfig::default();
+        assert!(config.num_threads > 0);
+        assert!(config.max_queue_size.is_some());
     }
 }

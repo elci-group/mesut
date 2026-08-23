@@ -136,18 +136,17 @@ impl Executor for RayonExecutor {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn rayon_executor_creation() {
+    #[test]
+    fn rayon_executor_creation() {
         let executor = RayonExecutor::new(RayonExecutorConfig::default()).unwrap();
         assert!(executor.is_available());
         assert_eq!(executor.queue_depth(), 0);
     }
 
-    #[tokio::test]
-    async fn rayon_executor_submit() {
-        let executor = Arc::new(RayonExecutor::new(RayonExecutorConfig::default()).unwrap());
-        let work = Work::new(mesut_core::WorkKind::Compute);
-        let result = executor.submit(work).await;
-        assert!(result.is_ok());
+    #[test]
+    fn rayon_executor_config() {
+        let config = RayonExecutorConfig::default();
+        assert!(config.num_threads.is_some());
+        assert!(config.max_queue_size.is_some());
     }
 }

@@ -10,10 +10,12 @@ use std::sync::Arc;
 pub use config::*;
 pub use pipeline::*;
 pub use native::*;
+pub use errors::*;
 
 mod config;
 mod pipeline;
 mod native;
+mod errors;
 
 /// The Mesut runtime orchestrator.
 pub struct MesuT {
