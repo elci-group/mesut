@@ -21,6 +21,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/ELCI/mesut"
 
 [workspace.dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 mesut-core = { path = "crates/mesut-core" }
 mesut-executor = { path = "crates/mesut-executor" }
 mesut-router = { path = "crates/mesut-router" }
