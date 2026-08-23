@@ -18,10 +18,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let async_executor = Arc::new(mesut::TokioExecutor::new(
         mesut_tokio::TokioExecutorConfig::default(),
     ));
-    let compute_executor = Arc::new(
-        mesut::RayonExecutor::new(mesut_rayon::RayonExecutorConfig::default())
-            .expect("Failed to create Rayon executor"),
-    );
+    let compute_executor = match mesut::RayonExecutor::new(mesut_rayon::RayonExecutorConfig::default()) {
+        Ok(executor) => Arc::new(executor),
+        Err(e) => {
+            eprintln!("Failed to create Rayon executor: {}", e);
+            return Err(format!("Rayon executor initialization failed: {}", e).into());
+        }
+    };
     let blocking_executor = Arc::new(mesut::BlockingExecutor::new(
         mesut_blocking::BlockingExecutorConfig::default(),
     ));
