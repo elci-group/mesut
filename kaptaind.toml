@@ -35,6 +35,12 @@ patch = 0.1    # score at or above this bumps Patch; below it, no commit
 enabled = true
 branch = "main"
 
+# This repo has no PR-based workflow (single main branch, direct pushes are
+# the established flow here) — explicitly opt out of kaptaind's default
+# main/master push protection for this repo only.
+[push.safety]
+protect_branches = []
+
 [ratelimit]
 min_commit_interval = 10
 
