@@ -7,7 +7,6 @@ pub trait WorkClassifier: Send + Sync {
 }
 
 /// Built-in classifiers.
-
 pub struct DefaultClassifier;
 
 impl WorkClassifier for DefaultClassifier {

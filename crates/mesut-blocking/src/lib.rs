@@ -1,18 +1,19 @@
 use async_trait::async_trait;
-use crossbeam::queue::SegQueue;
-use mesut_core::{ExecutorId, TaskError, TaskId, TaskResult, Work};
+use mesut_core::{CancellationToken, ExecutorId, TaskError, TaskId, TaskResult, Work};
 use mesut_executor::{Executor, Submission};
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 /// Blocking executor for CPU-bound blocking operations.
 pub struct BlockingExecutor {
     id: ExecutorId,
     thread_pool: Arc<BlockingThreadPool>,
-    active_tasks: Arc<RwLock<HashMap<TaskId, bool>>>,
+    active_tasks: Arc<RwLock<HashMap<TaskId, CancellationToken>>>,
     config: BlockingExecutorConfig,
+    closed: AtomicBool,
 }
 
 /// Configuration for blocking executor.
@@ -48,48 +49,76 @@ impl Default for BlockingExecutorConfig {
 }
 
 struct BlockingThreadPool {
-    work_queue: Arc<SegQueue<Option<Work>>>,
-    num_threads: usize,
+    sender: Mutex<Option<mpsc::Sender<PendingWork>>>,
+    workers: Mutex<Vec<thread::JoinHandle<()>>>,
+    activity: mesut_executor::Activity,
+}
+
+struct PendingWork {
+    work: Work,
+    _activity: mesut_executor::ActivityGuard,
 }
 
 impl BlockingThreadPool {
     fn new(num_threads: usize) -> Arc<Self> {
+        let (sender, receiver) = mpsc::channel::<PendingWork>();
+        let receiver = Arc::new(Mutex::new(receiver));
         let pool = Arc::new(Self {
-            work_queue: Arc::new(SegQueue::new()),
-            num_threads,
+            sender: Mutex::new(Some(sender)),
+            workers: Mutex::new(Vec::new()),
+            activity: Default::default(),
         });
 
-        for _ in 0..num_threads {
-            let work_queue = pool.work_queue.clone();
-            thread::spawn(move || loop {
-                if let Some(work) = work_queue.pop() {
-                    let _work = work;
-                    // Simulate blocking work
-                    thread::sleep(std::time::Duration::from_millis(10));
-                } else {
-                    thread::sleep(std::time::Duration::from_millis(1));
+        for _ in 0..num_threads.max(1) {
+            let receiver = receiver.clone();
+            let worker = thread::spawn(move || loop {
+                let next = match receiver.lock() {
+                    Ok(receiver) => receiver.recv(),
+                    Err(_) => break,
+                };
+                match next {
+                    Ok(pending) => {
+                        let PendingWork { work, _activity } = pending;
+                        work.execute();
+                    }
+                    Err(_) => break,
                 }
             });
+            pool.workers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(worker);
         }
 
         pool
     }
 
     fn submit(&self, work: Work) -> TaskResult<()> {
-        self.work_queue.push(Some(work));
-        Ok(())
-    }
-
-    fn shutdown(&self) {
-        for _ in 0..self.num_threads {
-            self.work_queue.push(None);
+        let sender = self
+            .sender
+            .lock()
+            .map_err(|_| TaskError::ExecutorUnavailable)?;
+        match sender.as_ref() {
+            Some(sender) => sender
+                .send(PendingWork {
+                    work,
+                    _activity: self.activity.enter(),
+                })
+                .map_err(|error| {
+                    error.0.work.finish(Err(TaskError::ExecutorUnavailable));
+                    TaskError::ExecutorUnavailable
+                }),
+            None => {
+                work.finish(Err(TaskError::ExecutorUnavailable));
+                Err(TaskError::ExecutorUnavailable)
+            }
         }
     }
 
-    fn queue_depth(&self) -> usize {
-        // Note: SegQueue doesn't provide a queue depth method
-        // This is a limitation we'd address in a production implementation
-        0
+    fn shutdown(&self) {
+        if let Ok(mut sender) = self.sender.lock() {
+            sender.take();
+        }
     }
 }
 
@@ -100,6 +129,7 @@ impl BlockingExecutor {
             thread_pool: BlockingThreadPool::new(config.num_threads),
             active_tasks: Arc::new(RwLock::new(HashMap::new())),
             config,
+            closed: AtomicBool::new(false),
         }
     }
 
@@ -111,11 +141,20 @@ impl BlockingExecutor {
 
 #[async_trait]
 impl Executor for BlockingExecutor {
+    fn is_idle(&self) -> bool {
+        self.thread_pool.activity.is_idle() && self.active_tasks.read().is_empty()
+    }
+    fn is_shutdown(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
     fn id(&self) -> ExecutorId {
         self.id
     }
 
     fn is_available(&self) -> bool {
+        if self.closed.load(Ordering::Acquire) {
+            return false;
+        }
         if let Some(max_size) = self.config.max_queue_size {
             self.active_tasks.read().len() < max_size
         } else {
@@ -124,33 +163,64 @@ impl Executor for BlockingExecutor {
     }
 
     async fn submit(&self, work: Work) -> TaskResult<Submission> {
-        if !self.is_available() {
+        if work.is_async() {
+            work.finish(Err(TaskError::InvalidConfiguration(
+                "async work requires Tokio".into(),
+            )));
+            return Err(TaskError::InvalidConfiguration(
+                "async work requires Tokio".into(),
+            ));
+        }
+        let mut tasks = self.active_tasks.write();
+        if self.closed.load(Ordering::Acquire) {
+            drop(tasks);
+            work.finish(Err(TaskError::ExecutorUnavailable));
+            return Err(TaskError::ExecutorUnavailable);
+        }
+        if tasks.contains_key(&work.id) {
+            drop(tasks);
+            work.finish(Err(TaskError::InvalidConfiguration(
+                "duplicate active task ID".into(),
+            )));
+            return Err(TaskError::InvalidConfiguration(
+                "duplicate active task ID".into(),
+            ));
+        }
+        if self
+            .config
+            .max_queue_size
+            .is_some_and(|limit| tasks.len() >= limit)
+        {
+            drop(tasks);
+            work.finish(Err(TaskError::QueueFull));
             return Err(TaskError::QueueFull);
         }
 
         let task_id = work.id;
         let executor_id = self.id;
 
-        self.active_tasks.write().insert(task_id, true);
+        tasks.insert(task_id, work.cancellation.clone());
+        drop(tasks);
         let active_tasks = self.active_tasks.clone();
         let task_id_clone = task_id;
 
-        self.thread_pool.submit(work)?;
-
-        // Simulate work completion
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+        let work = work.on_complete(move |_| {
             active_tasks.write().remove(&task_id_clone);
         });
+        self.thread_pool.submit(work)?;
 
         Ok(Submission::new(task_id, executor_id))
     }
 
     async fn cancel(&self, task_id: TaskId) -> TaskResult<()> {
         self.active_tasks
-            .write()
-            .remove(&task_id)
-            .ok_or(TaskError::ExecutionFailed(format!("Task {} not found", task_id)))?;
+            .read()
+            .get(&task_id)
+            .ok_or(TaskError::ExecutionFailed(format!(
+                "Task {} not found",
+                task_id
+            )))?
+            .cancel();
         Ok(())
     }
 
@@ -163,13 +233,40 @@ impl Executor for BlockingExecutor {
     }
 
     async fn shutdown(&self) -> TaskResult<()> {
+        let tasks = self.active_tasks.write();
+        self.closed.store(true, Ordering::Release);
+        for token in tasks.values() {
+            token.cancel();
+        }
+        drop(tasks);
         self.thread_pool.shutdown();
-        self.active_tasks.write().clear();
         Ok(())
     }
 
     async fn is_task_alive(&self, task_id: TaskId) -> bool {
         self.active_tasks.read().contains_key(&task_id)
+    }
+
+    async fn shutdown_and_wait(&self) -> TaskResult<()> {
+        self.shutdown().await?;
+        loop {
+            {
+                let mut workers = self
+                    .thread_pool
+                    .workers
+                    .lock()
+                    .map_err(|_| TaskError::Internal("worker handles poisoned".into()))?;
+                if self.is_idle() && workers.iter().all(thread::JoinHandle::is_finished) {
+                    for worker in workers.drain(..) {
+                        worker
+                            .join()
+                            .map_err(|_| TaskError::Internal("blocking worker panicked".into()))?;
+                    }
+                    return Ok(());
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
     }
 }
 

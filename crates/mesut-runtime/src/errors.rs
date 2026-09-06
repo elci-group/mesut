@@ -107,11 +107,7 @@ mod tests {
     #[test]
     fn error_context_display() {
         let task_id = TaskId::new();
-        let err = ErrorContext::new(
-            task_id,
-            TaskError::NoExecutor,
-            "Test context".to_string(),
-        );
+        let err = ErrorContext::new(task_id, TaskError::NoExecutor, "Test context".to_string());
         let display = format!("{}", err);
         assert!(display.contains("no suitable executor"));
     }

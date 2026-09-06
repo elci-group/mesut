@@ -3,6 +3,7 @@ use mesut_core::{ExecutorId, TaskError, TaskId, TaskResult, Work};
 use mesut_executor::{Executor, Submission};
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -11,6 +12,8 @@ pub struct TokioExecutor {
     id: ExecutorId,
     active_tasks: Arc<RwLock<HashMap<TaskId, JoinHandle<()>>>>,
     config: TokioExecutorConfig,
+    closed: AtomicBool,
+    activity: mesut_executor::Activity,
 }
 
 /// Configuration for Tokio executor.
@@ -51,6 +54,8 @@ impl TokioExecutor {
             id: ExecutorId::new(),
             active_tasks: Arc::new(RwLock::new(HashMap::new())),
             config,
+            closed: AtomicBool::new(false),
+            activity: Default::default(),
         }
     }
 
@@ -62,11 +67,20 @@ impl TokioExecutor {
 
 #[async_trait]
 impl Executor for TokioExecutor {
+    fn is_idle(&self) -> bool {
+        self.activity.is_idle() && self.active_tasks.read().is_empty()
+    }
+    fn is_shutdown(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
     fn id(&self) -> ExecutorId {
         self.id
     }
 
     fn is_available(&self) -> bool {
+        if self.closed.load(Ordering::Acquire) {
+            return false;
+        }
         if let Some(max_size) = self.config.max_queue_size {
             self.active_tasks.read().len() < max_size
         } else {
@@ -75,7 +89,43 @@ impl Executor for TokioExecutor {
     }
 
     async fn submit(&self, work: Work) -> TaskResult<Submission> {
-        if !self.is_available() {
+        if work.is_sync() {
+            work.finish(Err(TaskError::InvalidConfiguration(
+                "closures require a compute or blocking executor".into(),
+            )));
+            return Err(TaskError::InvalidConfiguration(
+                "closures require a compute or blocking executor".into(),
+            ));
+        }
+        let runtime = match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => runtime,
+            Err(_) => {
+                work.finish(Err(TaskError::ExecutorUnavailable));
+                return Err(TaskError::ExecutorUnavailable);
+            }
+        };
+        let mut tasks = self.active_tasks.write();
+        if self.closed.load(Ordering::Acquire) {
+            drop(tasks);
+            work.finish(Err(TaskError::ExecutorUnavailable));
+            return Err(TaskError::ExecutorUnavailable);
+        }
+        if tasks.contains_key(&work.id) {
+            drop(tasks);
+            work.finish(Err(TaskError::InvalidConfiguration(
+                "duplicate active task ID".into(),
+            )));
+            return Err(TaskError::InvalidConfiguration(
+                "duplicate active task ID".into(),
+            ));
+        }
+        if self
+            .config
+            .max_queue_size
+            .is_some_and(|limit| tasks.len() >= limit)
+        {
+            drop(tasks);
+            work.finish(Err(TaskError::QueueFull));
             return Err(TaskError::QueueFull);
         }
 
@@ -85,20 +135,21 @@ impl Executor for TokioExecutor {
         let active_tasks = self.active_tasks.clone();
         let task_id_clone = task_id;
 
-        let handle = tokio::spawn(async move {
-            let _work = work;
-            // Simulate work execution
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        let work = work.on_complete(move |_| {
             active_tasks.write().remove(&task_id_clone);
         });
-
-        self.active_tasks.write().insert(task_id, handle);
+        let guard = self.activity.enter();
+        let handle = runtime.spawn(async move {
+            let _guard = guard;
+            work.execute_async().await;
+        });
+        tasks.insert(task_id, handle);
 
         Ok(Submission::new(task_id, executor_id))
     }
 
     async fn cancel(&self, task_id: TaskId) -> TaskResult<()> {
-        if let Some(handle) = self.active_tasks.write().remove(&task_id) {
+        if let Some(handle) = self.active_tasks.read().get(&task_id) {
             handle.abort();
             Ok(())
         } else {
@@ -118,8 +169,9 @@ impl Executor for TokioExecutor {
     }
 
     async fn shutdown(&self) -> TaskResult<()> {
-        let mut tasks = self.active_tasks.write();
-        for (_, handle) in tasks.drain() {
+        let tasks = self.active_tasks.write();
+        self.closed.store(true, Ordering::Release);
+        for handle in tasks.values() {
             handle.abort();
         }
         Ok(())

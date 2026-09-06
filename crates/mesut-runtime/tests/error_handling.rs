@@ -30,7 +30,6 @@ fn test_runtime_config() {
     assert!(config.max_queue_size.is_some());
 }
 
-
 #[test]
 fn test_pipeline_validation() {
     use mesut_runtime::Pipeline;
@@ -41,7 +40,7 @@ fn test_pipeline_validation() {
 
 #[test]
 fn test_native_component_registry() {
-    use mesut_runtime::{NativeComponentRegistry, ComponentStatus};
+    use mesut_runtime::{ComponentStatus, NativeComponentRegistry};
 
     let mut registry = NativeComponentRegistry::new();
     assert_eq!(registry.production_ready_components().len(), 0);

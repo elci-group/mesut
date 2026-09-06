@@ -18,13 +18,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let async_executor = Arc::new(mesut::TokioExecutor::new(
         mesut_tokio::TokioExecutorConfig::default(),
     ));
-    let compute_executor = match mesut::RayonExecutor::new(mesut_rayon::RayonExecutorConfig::default()) {
-        Ok(executor) => Arc::new(executor),
-        Err(e) => {
-            eprintln!("Failed to create Rayon executor: {}", e);
-            return Err(format!("Rayon executor initialization failed: {}", e).into());
-        }
-    };
+    let compute_executor =
+        match mesut::RayonExecutor::new(mesut_rayon::RayonExecutorConfig::default()) {
+            Ok(executor) => Arc::new(executor),
+            Err(e) => {
+                eprintln!("Failed to create Rayon executor: {}", e);
+                return Err(format!("Rayon executor initialization failed: {}", e).into());
+            }
+        };
     let blocking_executor = Arc::new(mesut::BlockingExecutor::new(
         mesut_blocking::BlockingExecutorConfig::default(),
     ));
@@ -46,22 +47,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Submit I/O work
     println!("Submitting I/O work...");
-    let io_work = mesut_core::Work::new(WorkKind::Io)
-        .with_priority(Priority::Normal);
+    let io_work = mesut_core::Work::new(WorkKind::Io).with_priority(Priority::Normal);
     runtime.submit(io_work).await?;
     println!("✓ I/O task submitted\n");
 
     // Submit compute work
     println!("Submitting compute work...");
-    let compute_work = mesut_core::Work::new(WorkKind::Compute)
-        .with_priority(Priority::High);
+    let compute_work = mesut_core::Work::new(WorkKind::Compute).with_priority(Priority::High);
     runtime.submit(compute_work).await?;
     println!("✓ Compute task submitted\n");
 
     // Submit blocking work
     println!("Submitting blocking work...");
-    let blocking_work = mesut_core::Work::new(WorkKind::Blocking)
-        .with_priority(Priority::Normal);
+    let blocking_work = mesut_core::Work::new(WorkKind::Blocking).with_priority(Priority::Normal);
     runtime.submit(blocking_work).await?;
     println!("✓ Blocking task submitted\n");
 

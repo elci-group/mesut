@@ -126,7 +126,12 @@ impl NativeComponentRegistry {
     pub fn experimental_components(&self) -> Vec<&String> {
         self.components
             .iter()
-            .filter(|(_, status)| matches!(**status, ComponentStatus::Experimental | ComponentStatus::Beta))
+            .filter(|(_, status)| {
+                matches!(
+                    **status,
+                    ComponentStatus::Experimental | ComponentStatus::Beta
+                )
+            })
             .map(|(name, _)| name)
             .collect()
     }

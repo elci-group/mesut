@@ -25,12 +25,7 @@ pub enum RoutingEvent {
 }
 
 impl RoutingDiagnostic {
-    pub fn decision(
-        task_id: TaskId,
-        work_kind: String,
-        route: String,
-        confidence: f64,
-    ) -> Self {
+    pub fn decision(task_id: TaskId, work_kind: String, route: String, confidence: f64) -> Self {
         Self {
             task_id,
             event: RoutingEvent::DecisionMade {

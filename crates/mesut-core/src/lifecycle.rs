@@ -1,4 +1,4 @@
-use crate::TaskId;
+use crate::{TaskError, TaskId, TaskResult};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -10,44 +10,54 @@ pub struct CancellationToken {
 
 #[derive(Debug)]
 struct CancellationState {
-    cancelled: bool,
-    parent: Option<CancellationToken>,
+    reason: Option<TaskError>,
+    parents: Vec<CancellationToken>,
 }
 
 impl CancellationToken {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(CancellationState {
-                cancelled: false,
-                parent: None,
+                reason: None,
+                parents: Vec::new(),
             })),
         }
     }
 
     pub fn with_parent(parent: CancellationToken) -> Self {
+        Self::with_parents(vec![parent])
+    }
+
+    pub fn with_parents(parents: Vec<CancellationToken>) -> Self {
         Self {
             inner: Arc::new(RwLock::new(CancellationState {
-                cancelled: false,
-                parent: Some(parent),
+                reason: None,
+                parents,
             })),
         }
     }
 
     /// Check if cancellation has been requested.
     pub fn is_cancelled(&self) -> bool {
+        self.reason().is_some()
+    }
+
+    pub fn reason(&self) -> Option<TaskError> {
         let state = self.inner.read();
-        if state.cancelled {
-            return true;
+        if let Some(reason) = &state.reason {
+            return Some(reason.clone());
         }
-        if let Some(ref parent) = state.parent {
-            return parent.is_cancelled();
-        }
-        false
+        state.parents.iter().find_map(Self::reason)
     }
 
     /// Request cancellation of this token.
     pub fn cancel(&self) {
-        self.inner.write().cancelled = true;
+        self.cancel_with(TaskError::Cancelled);
+    }
+
+    /// Preserve the first cancellation reason (for example a deadline expiry).
+    pub fn cancel_with(&self, reason: TaskError) {
+        self.inner.write().reason.get_or_insert(reason);
     }
 
     /// Create a child token that cancels when parent cancels.
@@ -63,10 +73,12 @@ impl Default for CancellationToken {
 }
 
 /// Represents a task's scope and lifecycle.
+#[derive(Clone)]
 pub struct TaskScope {
     task_id: TaskId,
     token: CancellationToken,
     children: Arc<RwLock<Vec<TaskId>>>,
+    failure: Arc<RwLock<Option<TaskError>>>,
 }
 
 impl TaskScope {
@@ -75,6 +87,7 @@ impl TaskScope {
             task_id,
             token: CancellationToken::new(),
             children: Arc::new(RwLock::new(Vec::new())),
+            failure: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -83,6 +96,7 @@ impl TaskScope {
             task_id,
             token: CancellationToken::with_parent(parent_token),
             children: Arc::new(RwLock::new(Vec::new())),
+            failure: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -102,6 +116,25 @@ impl TaskScope {
     /// Get all registered children.
     pub fn children(&self) -> Vec<TaskId> {
         self.children.read().clone()
+    }
+
+    pub fn complete_child(&self, child_id: TaskId, result: &TaskResult<Vec<u8>>) {
+        if let Err(error) = result {
+            self.failure.write().get_or_insert_with(|| error.clone());
+            self.token.cancel();
+        }
+        let mut children = self.children.write();
+        if let Some(index) = children.iter().position(|id| *id == child_id) {
+            children.remove(index);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.children.read().is_empty()
+    }
+
+    pub fn result(&self) -> TaskResult<()> {
+        self.failure.read().clone().map_or(Ok(()), Err)
     }
 
     /// Check if this scope has been cancelled.

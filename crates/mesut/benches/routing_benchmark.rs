@@ -42,8 +42,7 @@ fn benchmark_routing(c: &mut Criterion) {
     c.bench_function("route_with_hint", |b| {
         b.iter(|| {
             let work = black_box(
-                mesut_core::Work::new(WorkKind::Io)
-                    .with_hint(mesut_core::RoutingHint::PreferAsync),
+                mesut_core::Work::new(WorkKind::Io).with_hint(mesut_core::RoutingHint::PreferAsync),
             );
             let _route = router.route(&work);
         })

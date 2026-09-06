@@ -1,105 +1,220 @@
-use async_trait::async_trait;
-use mesut_core::{CancellationToken, TaskError, TaskId, TaskResult, Work, WorkKind};
-use mesut_executor::{ArcExecutor, Executor};
-use mesut_observe::{EventObserver, NoOpObserver, TaskEvent, TraceCollector};
+use mesut_core::{Route, TaskError, TaskId, TaskResult, TaskScope, Work};
+use mesut_executor::ArcExecutor;
+use mesut_observe::{AssistObserver, EventObserver, NoOpObserver, TaskEvent};
 use mesut_router::WorkRouter;
-use parking_lot::RwLock;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use config::*;
-pub use pipeline::*;
-pub use native::*;
 pub use errors::*;
+pub use mesut_scheduler::BackpressurePolicy;
+pub use native::*;
+pub use pipeline::*;
 
 mod config;
-mod pipeline;
-mod native;
+mod coordination;
 mod errors;
+mod native;
+mod pipeline;
 
-/// The Mesut runtime orchestrator.
+/// Unified execution, priority admission, lifecycle ownership, and deadlines.
+#[derive(Clone)]
 pub struct MesuT {
     router: WorkRouter,
-    observer: Arc<dyn EventObserver>,
-    task_states: Arc<RwLock<HashMap<TaskId, String>>>,
+    coordination: Arc<coordination::Coordination>,
     config: RuntimeConfig,
 }
 
 impl MesuT {
     pub fn new(config: RuntimeConfig) -> Self {
+        let observer: Arc<dyn EventObserver> = if config.enable_animations {
+            Arc::new(AssistObserver::auto())
+        } else {
+            Arc::new(NoOpObserver)
+        };
         Self {
             router: WorkRouter::new(),
-            observer: Arc::new(NoOpObserver),
-            task_states: Arc::new(RwLock::new(HashMap::new())),
+            coordination: coordination::Coordination::new(config.clone(), observer),
             config,
         }
     }
 
-    pub fn with_observer(mut self, observer: Arc<dyn EventObserver>) -> Self {
-        self.observer = observer;
+    pub fn with_observer(self, observer: Arc<dyn EventObserver>) -> Self {
+        *self.coordination.observer.write() = observer;
         self
     }
 
     pub fn with_async_executor(mut self, executor: ArcExecutor) -> Self {
-        self.router = self.router.clone().with_async_executor(executor);
+        self.router = self.router.with_async_executor(executor);
         self
     }
 
     pub fn with_compute_executor(mut self, executor: ArcExecutor) -> Self {
-        self.router = self.router.clone().with_compute_executor(executor);
+        self.router = self.router.with_compute_executor(executor);
         self
     }
 
     pub fn with_blocking_executor(mut self, executor: ArcExecutor) -> Self {
-        self.router = self.router.clone().with_blocking_executor(executor);
+        self.router = self.router.with_blocking_executor(executor);
         self
     }
 
+    /// Accept work into the priority scheduler. Completion is delivered through
+    /// its callback; accepted work can subsequently fail during dispatch.
     pub async fn submit(&self, work: Work) -> TaskResult<()> {
-        let task_id = work.id;
-
-        self.observer
-            .observe(&TaskEvent::submitted(task_id, work.kind));
-
-        let route = self.router.route(&work)?;
-        let executor = self
-            .router
-            .get_executor(&route)
-            .ok_or(TaskError::NoExecutor)?;
-
-        self.observer
-            .observe(&TaskEvent::routed(task_id, format!("{}", route)));
-
-        self.observer
-            .observe(&TaskEvent::queued(task_id, executor.queue_depth()));
-
-        let _submission = executor.submit(work).await?;
-
-        self.observer
-            .observe(&TaskEvent::started(task_id, format!("{}", executor.id())));
-
-        self.task_states
-            .write()
-            .insert(task_id, format!("{}", route));
-
-        Ok(())
+        let id = work.id;
+        self.coordination
+            .state
+            .lock()
+            .runtime_state
+            .add_submission();
+        self.coordination
+            .observe(TaskEvent::submitted(id, work.kind));
+        let prepared = (|| {
+            let route = self.router.route(&work)?;
+            let executor = self
+                .router
+                .get_executor(&route)
+                .ok_or(TaskError::NoExecutor)?;
+            if (work.is_sync() && matches!(route, Route::Async(_) | Route::Realtime(_)))
+                || (work.is_async() && !matches!(route, Route::Async(_) | Route::Realtime(_)))
+            {
+                return Err(TaskError::InvalidConfiguration(
+                    "job type is incompatible with its routed executor".into(),
+                ));
+            }
+            tokio::runtime::Handle::try_current().map_err(|_| TaskError::ExecutorUnavailable)?;
+            if executor.is_shutdown() {
+                return Err(TaskError::ExecutorUnavailable);
+            }
+            Ok((executor, route.to_string()))
+        })();
+        match prepared {
+            Ok((executor, route)) => self.coordination.admit(work, executor, route).await,
+            Err(error) => {
+                self.coordination.state.lock().runtime_state.add_failure();
+                self.coordination
+                    .observe(TaskEvent::failed(id, error.to_string()));
+                work.finish(Err(error.clone()));
+                Err(error)
+            }
+        }
     }
 
     pub async fn cancel(&self, task_id: TaskId) -> TaskResult<()> {
-        if self.task_states.read().contains_key(&task_id) {
-            self.observer
-                .observe(&TaskEvent::cancelled(task_id, "User requested".to_string()));
-            self.task_states.write().remove(&task_id);
+        if let Some(entry) = self.coordination.state.lock().tasks.get(&task_id) {
+            entry.token.cancel();
         }
+        self.coordination.changed.notify_waiters();
         Ok(())
     }
 
     pub fn task_state(&self, task_id: TaskId) -> Option<String> {
-        self.task_states.read().get(&task_id).cloned()
+        self.coordination
+            .state
+            .lock()
+            .tasks
+            .get(&task_id)
+            .map(|entry| entry.route.clone())
     }
 
     pub fn active_tasks(&self) -> usize {
-        self.task_states.read().len()
+        self.coordination.state.lock().tasks.len()
+    }
+
+    /// The learned duration profile for `label` (see [`Work::with_label`]),
+    /// used by `SchedulingMode::Adaptive`. `None` until at least one labeled
+    /// task with that label has completed successfully.
+    pub fn workload_profile(&self, label: &str) -> Option<mesut_scheduler::WorkloadProfile> {
+        self.coordination.workload.profile(label)
+    }
+
+    /// A snapshot of cumulative submission/completion counters and
+    /// per-executor statistics. `active_tasks`/`queue_depth` reflect this
+    /// exact moment; the rest accumulate for the life of the runtime.
+    pub fn runtime_state(&self) -> mesut_scheduler::RuntimeState {
+        let mut snapshot = self.coordination.state.lock().runtime_state.clone();
+        for executor in self.router.executors() {
+            let stats = snapshot
+                .executor_stats
+                .entry(executor.id().to_string())
+                .or_default();
+            stats.active_tasks = executor.active_tasks();
+            stats.queue_depth = executor.queue_depth();
+        }
+        snapshot
+    }
+
+    /// Wait until every admitted task exits. Does not close admission.
+    pub async fn join(&self) -> TaskResult<()> {
+        loop {
+            let notified = self.coordination.changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.active_tasks() == 0 {
+                return Ok(());
+            }
+            notified.await;
+        }
+    }
+
+    /// Close admission, request cancellation, and wait for jobs and adapters to
+    /// become quiescent. Uncooperative closures can keep this future pending;
+    /// callers can bound their wait with tokio::time::timeout.
+    pub async fn shutdown(&self) -> TaskResult<()> {
+        {
+            let mut state = self.coordination.state.lock();
+            state.closed = true;
+            for entry in state.tasks.values() {
+                entry.token.cancel();
+            }
+        }
+        self.coordination.changed.notify_waiters();
+        for executor in self.router.executors() {
+            executor.shutdown().await?;
+        }
+        self.join().await?;
+        for executor in self.router.executors() {
+            executor.shutdown_and_wait().await?;
+        }
+        Ok(())
+    }
+
+    pub async fn submit_scoped(&self, scope: &TaskScope, work: Work) -> TaskResult<()> {
+        self.submit(work.with_scope(scope)).await
+    }
+
+    pub async fn join_scope(&self, scope: &TaskScope) -> TaskResult<()> {
+        while !scope.is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        scope.result()
+    }
+
+    /// Children are joined before returning. Child failures cancel siblings;
+    /// errors or dropping this future cancel its scope. Nested scopes can use
+    /// TaskScope::with_parent with the outer scope's token.
+    pub async fn scope<T, F, Fut>(&self, body: F) -> TaskResult<T>
+    where
+        F: FnOnce(TaskScope) -> Fut,
+        Fut: std::future::Future<Output = TaskResult<T>>,
+    {
+        struct Guard(TaskScope);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                self.0.cancel();
+            }
+        }
+        let scope = TaskScope::new(TaskId::new());
+        let guard = Guard(scope.clone());
+        let result = body(scope.clone()).await;
+        if result.is_err() {
+            scope.cancel();
+        }
+        let children = self.join_scope(&scope).await;
+        drop(guard);
+        let value = result?;
+        children?;
+        Ok(value)
     }
 }
 
@@ -112,18 +227,29 @@ impl Default for MesuT {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mesut_core::WorkKind;
+    use mesut_observe::TraceCollector;
 
     #[test]
     fn runtime_creation() {
-        let runtime = MesuT::default();
-        assert_eq!(runtime.active_tasks(), 0);
+        assert_eq!(MesuT::default().active_tasks(), 0);
     }
 
     #[test]
     fn task_state_tracking() {
-        let runtime = MesuT::default();
-        let task_id = TaskId::new();
+        assert!(MesuT::default().task_state(TaskId::new()).is_none());
+    }
 
-        assert!(runtime.task_state(task_id).is_none());
+    #[tokio::test]
+    async fn failed_submission_closes_the_observer_lifecycle() {
+        let collector = Arc::new(TraceCollector::new());
+        let runtime = MesuT::default().with_observer(collector.clone());
+        assert!(runtime.submit(Work::new(WorkKind::Io)).await.is_err());
+        let events = collector.events();
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events.last().map(|event| &event.event_type),
+            Some(mesut_observe::TaskEventType::Failed { .. })
+        ));
     }
 }

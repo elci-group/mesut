@@ -1,16 +1,19 @@
 use async_trait::async_trait;
-use mesut_core::{ExecutorId, TaskError, TaskId, TaskResult, Work};
+use mesut_core::{CancellationToken, ExecutorId, TaskError, TaskId, TaskResult, Work};
 use mesut_executor::{Executor, Submission};
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Rayon executor adapter for Mesut.
 pub struct RayonExecutor {
     id: ExecutorId,
     thread_pool: rayon::ThreadPool,
-    active_tasks: Arc<RwLock<HashMap<TaskId, bool>>>,
+    active_tasks: Arc<RwLock<HashMap<TaskId, CancellationToken>>>,
     config: RayonExecutorConfig,
+    closed: AtomicBool,
+    activity: mesut_executor::Activity,
 }
 
 /// Configuration for Rayon executor.
@@ -58,6 +61,8 @@ impl RayonExecutor {
             thread_pool,
             active_tasks: Arc::new(RwLock::new(HashMap::new())),
             config,
+            closed: AtomicBool::new(false),
+            activity: Default::default(),
         })
     }
 
@@ -69,11 +74,20 @@ impl RayonExecutor {
 
 #[async_trait]
 impl Executor for RayonExecutor {
+    fn is_idle(&self) -> bool {
+        self.activity.is_idle() && self.active_tasks.read().is_empty()
+    }
+    fn is_shutdown(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
     fn id(&self) -> ExecutorId {
         self.id
     }
 
     fn is_available(&self) -> bool {
+        if self.closed.load(Ordering::Acquire) {
+            return false;
+        }
         if let Some(max_size) = self.config.max_queue_size {
             self.active_tasks.read().len() < max_size
         } else {
@@ -82,7 +96,36 @@ impl Executor for RayonExecutor {
     }
 
     async fn submit(&self, work: Work) -> TaskResult<Submission> {
-        if !self.is_available() {
+        if work.is_async() {
+            work.finish(Err(TaskError::InvalidConfiguration(
+                "async work requires Tokio".into(),
+            )));
+            return Err(TaskError::InvalidConfiguration(
+                "async work requires Tokio".into(),
+            ));
+        }
+        let mut tasks = self.active_tasks.write();
+        if self.closed.load(Ordering::Acquire) {
+            drop(tasks);
+            work.finish(Err(TaskError::ExecutorUnavailable));
+            return Err(TaskError::ExecutorUnavailable);
+        }
+        if tasks.contains_key(&work.id) {
+            drop(tasks);
+            work.finish(Err(TaskError::InvalidConfiguration(
+                "duplicate active task ID".into(),
+            )));
+            return Err(TaskError::InvalidConfiguration(
+                "duplicate active task ID".into(),
+            ));
+        }
+        if self
+            .config
+            .max_queue_size
+            .is_some_and(|limit| tasks.len() >= limit)
+        {
+            drop(tasks);
+            work.finish(Err(TaskError::QueueFull));
             return Err(TaskError::QueueFull);
         }
 
@@ -91,16 +134,17 @@ impl Executor for RayonExecutor {
         let active_tasks = self.active_tasks.clone();
         let task_id_clone = task_id;
 
-        self.active_tasks.write().insert(task_id, true);
+        tasks.insert(task_id, work.cancellation.clone());
+        drop(tasks);
 
         let thread_pool = &self.thread_pool;
-        thread_pool.spawn(move || {
-            let _work = work;
-            // Simulate compute work
-            for _ in 0..1000 {
-                let _ = (1..1000).fold(0, |acc, x| acc + x);
-            }
+        let work = work.on_complete(move |_| {
             active_tasks.write().remove(&task_id_clone);
+        });
+        let guard = self.activity.enter();
+        thread_pool.spawn(move || {
+            let _guard = guard;
+            work.execute();
         });
 
         Ok(Submission::new(task_id, executor_id))
@@ -108,9 +152,13 @@ impl Executor for RayonExecutor {
 
     async fn cancel(&self, task_id: TaskId) -> TaskResult<()> {
         self.active_tasks
-            .write()
-            .remove(&task_id)
-            .ok_or(TaskError::ExecutionFailed(format!("Task {} not found", task_id)))?;
+            .read()
+            .get(&task_id)
+            .ok_or(TaskError::ExecutionFailed(format!(
+                "Task {} not found",
+                task_id
+            )))?
+            .cancel();
         Ok(())
     }
 
@@ -123,7 +171,11 @@ impl Executor for RayonExecutor {
     }
 
     async fn shutdown(&self) -> TaskResult<()> {
-        self.active_tasks.write().clear();
+        let tasks = self.active_tasks.write();
+        self.closed.store(true, Ordering::Release);
+        for token in tasks.values() {
+            token.cancel();
+        }
         Ok(())
     }
 

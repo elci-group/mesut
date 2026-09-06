@@ -1,0 +1,928 @@
+{
+  "config": {
+    "concurrency": 32,
+    "cpu_rounds": 20000,
+    "debug_assertions": false,
+    "io_sleep_ms": 1,
+    "iterations": 2000,
+    "repeat": 3,
+    "threads_per_pool": 4,
+    "warmup_iterations": 256
+  },
+  "machine": {
+    "arch": "x86_64",
+    "available_parallelism": 12,
+    "cpu_model": "model name\t: Intel(R) Core(TM) 5 120U",
+    "os": "linux",
+    "unix_seconds": 1788714812
+  },
+  "medians": [
+    {
+      "case": "direct-tokio",
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.170746774,
+      "io_latency_us": {
+        "count": 2000.0,
+        "p50": 2342.158,
+        "p95": 2625.68,
+        "p99": 2855.562
+      },
+      "latency_us": {
+        "count": 2000.0,
+        "p50": 2342.158,
+        "p95": 2625.68,
+        "p99": 2855.562
+      },
+      "repetitions": 3,
+      "rss_kib": {
+        "after_setup": 3216.0,
+        "after_work": 3692.0,
+        "before_work": 3656.0,
+        "process_baseline": 2776.0,
+        "sampled_max": 3692.0,
+        "sampled_max_delta_from_before_work": 32.0,
+        "setup_delta": 444.0,
+        "warmup_and_buffers_delta": 436.0,
+        "work_delta": 32.0
+      },
+      "tasks_per_second": 11713.252046565753
+    },
+    {
+      "case": "mesut-tokio",
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.200662606,
+      "io_latency_us": {
+        "count": 2000.0,
+        "p50": 2478.596,
+        "p95": 3443.996,
+        "p99": 3570.5440000000003
+      },
+      "latency_us": {
+        "count": 2000.0,
+        "p50": 2478.596,
+        "p95": 3443.996,
+        "p99": 3570.5440000000003
+      },
+      "repetitions": 3,
+      "rss_kib": {
+        "after_setup": 3228.0,
+        "after_work": 4232.0,
+        "before_work": 4036.0,
+        "process_baseline": 2744.0,
+        "sampled_max": 4232.0,
+        "sampled_max_delta_from_before_work": 156.0,
+        "setup_delta": 488.0,
+        "warmup_and_buffers_delta": 812.0,
+        "work_delta": 156.0
+      },
+      "tasks_per_second": 9966.979099234864
+    },
+    {
+      "case": "direct-rayon",
+      "cpu_latency_us": {
+        "count": 2000.0,
+        "p50": 221.79,
+        "p95": 439.274,
+        "p99": 523.63
+      },
+      "elapsed_seconds": 0.030198418,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000.0,
+        "p50": 221.79,
+        "p95": 439.274,
+        "p99": 523.63
+      },
+      "repetitions": 3,
+      "rss_kib": {
+        "after_setup": 3404.0,
+        "after_work": 3744.0,
+        "before_work": 3724.0,
+        "process_baseline": 2764.0,
+        "sampled_max": 3744.0,
+        "sampled_max_delta_from_before_work": 20.0,
+        "setup_delta": 632.0,
+        "warmup_and_buffers_delta": 328.0,
+        "work_delta": 20.0
+      },
+      "tasks_per_second": 66228.63489074162
+    },
+    {
+      "case": "mesut-rayon",
+      "cpu_latency_us": {
+        "count": 2000.0,
+        "p50": 229.756,
+        "p95": 408.307,
+        "p99": 510.334
+      },
+      "elapsed_seconds": 0.033613149,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000.0,
+        "p50": 229.756,
+        "p95": 408.307,
+        "p99": 510.334
+      },
+      "repetitions": 3,
+      "rss_kib": {
+        "after_setup": 3420.0,
+        "after_work": 4144.0,
+        "before_work": 4036.0,
+        "process_baseline": 2724.0,
+        "sampled_max": 4144.0,
+        "sampled_max_delta_from_before_work": 112.0,
+        "setup_delta": 672.0,
+        "warmup_and_buffers_delta": 628.0,
+        "work_delta": 112.0
+      },
+      "tasks_per_second": 59500.5246310008
+    },
+    {
+      "case": "direct-mixed",
+      "cpu_latency_us": {
+        "count": 1000.0,
+        "p50": 344.747,
+        "p95": 672.6460000000001,
+        "p99": 808.824
+      },
+      "elapsed_seconds": 0.149283397,
+      "io_latency_us": {
+        "count": 1000.0,
+        "p50": 2144.6490000000003,
+        "p95": 2689.084,
+        "p99": 2922.089
+      },
+      "latency_us": {
+        "count": 2000.0,
+        "p50": 933.37,
+        "p95": 2392.573,
+        "p99": 2917.49
+      },
+      "repetitions": 3,
+      "rss_kib": {
+        "after_setup": 3416.0,
+        "after_work": 3768.0,
+        "before_work": 3760.0,
+        "process_baseline": 2800.0,
+        "sampled_max": 3768.0,
+        "sampled_max_delta_from_before_work": 12.0,
+        "setup_delta": 616.0,
+        "warmup_and_buffers_delta": 348.0,
+        "work_delta": 12.0
+      },
+      "tasks_per_second": 13397.337146608474
+    },
+    {
+      "case": "mesut-mixed",
+      "cpu_latency_us": {
+        "count": 1000.0,
+        "p50": 634.02,
+        "p95": 1094.421,
+        "p99": 1391.766
+      },
+      "elapsed_seconds": 0.18823591,
+      "io_latency_us": {
+        "count": 1000.0,
+        "p50": 2385.01,
+        "p95": 3467.5370000000003,
+        "p99": 3543.904
+      },
+      "latency_us": {
+        "count": 2000.0,
+        "p50": 1418.5549999999998,
+        "p95": 3319.939,
+        "p99": 3533.065
+      },
+      "repetitions": 3,
+      "rss_kib": {
+        "after_setup": 3400.0,
+        "after_work": 4264.0,
+        "before_work": 4112.0,
+        "process_baseline": 2692.0,
+        "sampled_max": 4264.0,
+        "sampled_max_delta_from_before_work": 152.0,
+        "setup_delta": 600.0,
+        "warmup_and_buffers_delta": 672.0,
+        "work_delta": 152.0
+      },
+      "tasks_per_second": 10624.965236441867
+    }
+  ],
+  "results": [
+    {
+      "case": "direct-tokio",
+      "checksum": 1999000,
+      "completed": 2000,
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.145981321,
+      "io_latency_us": {
+        "count": 2000,
+        "p50": 2157.333,
+        "p95": 2313.776,
+        "p99": 3038.4539999999997
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 2157.333,
+        "p95": 2313.776,
+        "p99": 3038.4539999999997
+      },
+      "repetition": 1,
+      "rss_kib": {
+        "after_setup": 3216,
+        "after_work": 3688,
+        "before_work": 3656,
+        "process_baseline": 2772,
+        "sampled_max": 3688,
+        "sampled_max_delta_from_before_work": 32,
+        "setup_delta": 444,
+        "warmup_and_buffers_delta": 440,
+        "work_delta": 32
+      },
+      "tasks_per_second": 13700.382941458654,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.019360005,
+        "rss_after_kib": 3656,
+        "rss_before_kib": 3304
+      }
+    },
+    {
+      "case": "mesut-tokio",
+      "checksum": 1999000,
+      "completed": 2000,
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.184920044,
+      "io_latency_us": {
+        "count": 2000,
+        "p50": 2377.592,
+        "p95": 3361.367,
+        "p99": 3543.9
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 2377.592,
+        "p95": 3361.367,
+        "p99": 3543.9
+      },
+      "repetition": 1,
+      "rss_kib": {
+        "after_setup": 3280,
+        "after_work": 4304,
+        "before_work": 4164,
+        "process_baseline": 2744,
+        "sampled_max": 4304,
+        "sampled_max_delta_from_before_work": 140,
+        "setup_delta": 536,
+        "warmup_and_buffers_delta": 884,
+        "work_delta": 140
+      },
+      "tasks_per_second": 10815.485205054352,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.025255337,
+        "rss_after_kib": 4164,
+        "rss_before_kib": 3360
+      }
+    },
+    {
+      "case": "direct-rayon",
+      "checksum": 8712247227710025087,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 2000,
+        "p50": 250.192,
+        "p95": 448.3,
+        "p99": 599.573
+      },
+      "elapsed_seconds": 0.033714397,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000,
+        "p50": 250.192,
+        "p95": 448.3,
+        "p99": 599.573
+      },
+      "repetition": 1,
+      "rss_kib": {
+        "after_setup": 3396,
+        "after_work": 3744,
+        "before_work": 3724,
+        "process_baseline": 2764,
+        "sampled_max": 3744,
+        "sampled_max_delta_from_before_work": 20,
+        "setup_delta": 632,
+        "warmup_and_buffers_delta": 328,
+        "work_delta": 20
+      },
+      "tasks_per_second": 59321.83808596666,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.008083173,
+        "rss_after_kib": 3724,
+        "rss_before_kib": 3500
+      }
+    },
+    {
+      "case": "mesut-rayon",
+      "checksum": 8712247227710025087,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 2000,
+        "p50": 288.867,
+        "p95": 525.2909999999999,
+        "p99": 634.9459999999999
+      },
+      "elapsed_seconds": 0.037858471,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000,
+        "p50": 288.867,
+        "p95": 525.2909999999999,
+        "p99": 634.9459999999999
+      },
+      "repetition": 1,
+      "rss_kib": {
+        "after_setup": 3340,
+        "after_work": 4144,
+        "before_work": 4032,
+        "process_baseline": 2724,
+        "sampled_max": 4144,
+        "sampled_max_delta_from_before_work": 112,
+        "setup_delta": 616,
+        "warmup_and_buffers_delta": 692,
+        "work_delta": 112
+      },
+      "tasks_per_second": 52828.33530176114,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.004459862,
+        "rss_after_kib": 4032,
+        "rss_before_kib": 3432
+      }
+    },
+    {
+      "case": "direct-mixed",
+      "checksum": 15570932600424290358,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 1000,
+        "p50": 186.121,
+        "p95": 298.287,
+        "p99": 313.834
+      },
+      "elapsed_seconds": 0.138899926,
+      "io_latency_us": {
+        "count": 1000,
+        "p50": 2112.125,
+        "p95": 2446.265,
+        "p99": 2494.908
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 365.421,
+        "p95": 2392.573,
+        "p99": 2467.14
+      },
+      "repetition": 1,
+      "rss_kib": {
+        "after_setup": 3408,
+        "after_work": 3768,
+        "before_work": 3756,
+        "process_baseline": 2696,
+        "sampled_max": 3768,
+        "sampled_max_delta_from_before_work": 12,
+        "setup_delta": 712,
+        "warmup_and_buffers_delta": 348,
+        "work_delta": 12
+      },
+      "tasks_per_second": 14398.85576324929,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.017601754,
+        "rss_after_kib": 3756,
+        "rss_before_kib": 3484
+      }
+    },
+    {
+      "case": "mesut-mixed",
+      "checksum": 15570932600424290358,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 1000,
+        "p50": 634.02,
+        "p95": 1028.467,
+        "p99": 1142.37
+      },
+      "elapsed_seconds": 0.18823591,
+      "io_latency_us": {
+        "count": 1000,
+        "p50": 2385.01,
+        "p95": 3403.952,
+        "p99": 3508.6330000000003
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 1199.1180000000002,
+        "p95": 3235.0209999999997,
+        "p99": 3472.911
+      },
+      "repetition": 1,
+      "rss_kib": {
+        "after_setup": 3440,
+        "after_work": 4264,
+        "before_work": 4112,
+        "process_baseline": 2840,
+        "sampled_max": 4264,
+        "sampled_max_delta_from_before_work": 152,
+        "setup_delta": 600,
+        "warmup_and_buffers_delta": 672,
+        "work_delta": 152
+      },
+      "tasks_per_second": 10624.965236441867,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.018996954,
+        "rss_after_kib": 4112,
+        "rss_before_kib": 3548
+      }
+    },
+    {
+      "case": "mesut-mixed",
+      "checksum": 15570932600424290358,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 1000,
+        "p50": 613.7049999999999,
+        "p95": 1094.421,
+        "p99": 1391.766
+      },
+      "elapsed_seconds": 0.188061005,
+      "io_latency_us": {
+        "count": 1000,
+        "p50": 2382.797,
+        "p95": 3467.5370000000003,
+        "p99": 3543.904
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 1418.5549999999998,
+        "p95": 3319.939,
+        "p99": 3533.065
+      },
+      "repetition": 2,
+      "rss_kib": {
+        "after_setup": 3400,
+        "after_work": 4204,
+        "before_work": 4060,
+        "process_baseline": 2692,
+        "sampled_max": 4204,
+        "sampled_max_delta_from_before_work": 144,
+        "setup_delta": 708,
+        "warmup_and_buffers_delta": 660,
+        "work_delta": 144
+      },
+      "tasks_per_second": 10634.846921082868,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.019075455,
+        "rss_after_kib": 4060,
+        "rss_before_kib": 3492
+      }
+    },
+    {
+      "case": "direct-mixed",
+      "checksum": 15570932600424290358,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 1000,
+        "p50": 461.856,
+        "p95": 820.302,
+        "p99": 877.4949999999999
+      },
+      "elapsed_seconds": 0.149283397,
+      "io_latency_us": {
+        "count": 1000,
+        "p50": 2159.332,
+        "p95": 2689.084,
+        "p99": 2922.089
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 933.37,
+        "p95": 2367.643,
+        "p99": 2917.49
+      },
+      "repetition": 2,
+      "rss_kib": {
+        "after_setup": 3424,
+        "after_work": 3868,
+        "before_work": 3852,
+        "process_baseline": 2808,
+        "sampled_max": 3868,
+        "sampled_max_delta_from_before_work": 16,
+        "setup_delta": 616,
+        "warmup_and_buffers_delta": 428,
+        "work_delta": 16
+      },
+      "tasks_per_second": 13397.337146608474,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.016941294,
+        "rss_after_kib": 3852,
+        "rss_before_kib": 3512
+      }
+    },
+    {
+      "case": "mesut-rayon",
+      "checksum": 8712247227710025087,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 2000,
+        "p50": 227.593,
+        "p95": 408.307,
+        "p99": 510.334
+      },
+      "elapsed_seconds": 0.032294857,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000,
+        "p50": 227.593,
+        "p95": 408.307,
+        "p99": 510.334
+      },
+      "repetition": 2,
+      "rss_kib": {
+        "after_setup": 3428,
+        "after_work": 4140,
+        "before_work": 4036,
+        "process_baseline": 2756,
+        "sampled_max": 4140,
+        "sampled_max_delta_from_before_work": 104,
+        "setup_delta": 672,
+        "warmup_and_buffers_delta": 608,
+        "work_delta": 104
+      },
+      "tasks_per_second": 61929.365409483,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.004790909,
+        "rss_after_kib": 4036,
+        "rss_before_kib": 3540
+      }
+    },
+    {
+      "case": "direct-rayon",
+      "checksum": 8712247227710025087,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 2000,
+        "p50": 198.803,
+        "p95": 343.092,
+        "p99": 383.973
+      },
+      "elapsed_seconds": 0.024699134,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000,
+        "p50": 198.803,
+        "p95": 343.092,
+        "p99": 383.973
+      },
+      "repetition": 2,
+      "rss_kib": {
+        "after_setup": 3404,
+        "after_work": 3848,
+        "before_work": 3832,
+        "process_baseline": 2804,
+        "sampled_max": 3848,
+        "sampled_max_delta_from_before_work": 16,
+        "setup_delta": 600,
+        "warmup_and_buffers_delta": 428,
+        "work_delta": 16
+      },
+      "tasks_per_second": 80974.49894397106,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.004007068,
+        "rss_after_kib": 3832,
+        "rss_before_kib": 3496
+      }
+    },
+    {
+      "case": "mesut-tokio",
+      "checksum": 1999000,
+      "completed": 2000,
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.20412981,
+      "io_latency_us": {
+        "count": 2000,
+        "p50": 2478.596,
+        "p95": 3541.375,
+        "p99": 3678.13
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 2478.596,
+        "p95": 3541.375,
+        "p99": 3678.13
+      },
+      "repetition": 2,
+      "rss_kib": {
+        "after_setup": 3196,
+        "after_work": 4232,
+        "before_work": 4008,
+        "process_baseline": 2708,
+        "sampled_max": 4232,
+        "sampled_max_delta_from_before_work": 224,
+        "setup_delta": 488,
+        "warmup_and_buffers_delta": 812,
+        "work_delta": 224
+      },
+      "tasks_per_second": 9797.687069811118,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.01854927,
+        "rss_after_kib": 4008,
+        "rss_before_kib": 3344
+      }
+    },
+    {
+      "case": "direct-tokio",
+      "checksum": 1999000,
+      "completed": 2000,
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.171178946,
+      "io_latency_us": {
+        "count": 2000,
+        "p50": 2384.017,
+        "p95": 2625.68,
+        "p99": 2699.108
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 2384.017,
+        "p95": 2625.68,
+        "p99": 2699.108
+      },
+      "repetition": 2,
+      "rss_kib": {
+        "after_setup": 3232,
+        "after_work": 3700,
+        "before_work": 3668,
+        "process_baseline": 2776,
+        "sampled_max": 3700,
+        "sampled_max_delta_from_before_work": 32,
+        "setup_delta": 456,
+        "warmup_and_buffers_delta": 436,
+        "work_delta": 32
+      },
+      "tasks_per_second": 11683.679837589372,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.020057888,
+        "rss_after_kib": 3668,
+        "rss_before_kib": 3312
+      }
+    },
+    {
+      "case": "direct-tokio",
+      "checksum": 1999000,
+      "completed": 2000,
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.170746774,
+      "io_latency_us": {
+        "count": 2000,
+        "p50": 2342.158,
+        "p95": 2698.696,
+        "p99": 2855.562
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 2342.158,
+        "p95": 2698.696,
+        "p99": 2855.562
+      },
+      "repetition": 3,
+      "rss_kib": {
+        "after_setup": 3212,
+        "after_work": 3692,
+        "before_work": 3648,
+        "process_baseline": 2804,
+        "sampled_max": 3692,
+        "sampled_max_delta_from_before_work": 44,
+        "setup_delta": 408,
+        "warmup_and_buffers_delta": 436,
+        "work_delta": 44
+      },
+      "tasks_per_second": 11713.252046565753,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.021653918,
+        "rss_after_kib": 3648,
+        "rss_before_kib": 3300
+      }
+    },
+    {
+      "case": "mesut-tokio",
+      "checksum": 1999000,
+      "completed": 2000,
+      "cpu_latency_us": null,
+      "elapsed_seconds": 0.200662606,
+      "io_latency_us": {
+        "count": 2000,
+        "p50": 2508.2250000000004,
+        "p95": 3443.996,
+        "p99": 3570.5440000000003
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 2508.2250000000004,
+        "p95": 3443.996,
+        "p99": 3570.5440000000003
+      },
+      "repetition": 3,
+      "rss_kib": {
+        "after_setup": 3228,
+        "after_work": 4192,
+        "before_work": 4036,
+        "process_baseline": 2788,
+        "sampled_max": 4192,
+        "sampled_max_delta_from_before_work": 156,
+        "setup_delta": 440,
+        "warmup_and_buffers_delta": 808,
+        "work_delta": 156
+      },
+      "tasks_per_second": 9966.979099234864,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.026599133,
+        "rss_after_kib": 4036,
+        "rss_before_kib": 3312
+      }
+    },
+    {
+      "case": "direct-rayon",
+      "checksum": 8712247227710025087,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 2000,
+        "p50": 221.79,
+        "p95": 439.274,
+        "p99": 523.63
+      },
+      "elapsed_seconds": 0.030198418,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000,
+        "p50": 221.79,
+        "p95": 439.274,
+        "p99": 523.63
+      },
+      "repetition": 3,
+      "rss_kib": {
+        "after_setup": 3408,
+        "after_work": 3744,
+        "before_work": 3724,
+        "process_baseline": 2700,
+        "sampled_max": 3744,
+        "sampled_max_delta_from_before_work": 20,
+        "setup_delta": 708,
+        "warmup_and_buffers_delta": 316,
+        "work_delta": 20
+      },
+      "tasks_per_second": 66228.63489074162,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.007517288,
+        "rss_after_kib": 3724,
+        "rss_before_kib": 3492
+      }
+    },
+    {
+      "case": "mesut-rayon",
+      "checksum": 8712247227710025087,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 2000,
+        "p50": 229.756,
+        "p95": 376.595,
+        "p99": 476.207
+      },
+      "elapsed_seconds": 0.033613149,
+      "io_latency_us": null,
+      "latency_us": {
+        "count": 2000,
+        "p50": 229.756,
+        "p95": 376.595,
+        "p99": 476.207
+      },
+      "repetition": 3,
+      "rss_kib": {
+        "after_setup": 3420,
+        "after_work": 4160,
+        "before_work": 4048,
+        "process_baseline": 2716,
+        "sampled_max": 4160,
+        "sampled_max_delta_from_before_work": 112,
+        "setup_delta": 704,
+        "warmup_and_buffers_delta": 628,
+        "work_delta": 112
+      },
+      "tasks_per_second": 59500.5246310008,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.005712042,
+        "rss_after_kib": 4048,
+        "rss_before_kib": 3520
+      }
+    },
+    {
+      "case": "direct-mixed",
+      "checksum": 15570932600424290358,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 1000,
+        "p50": 344.747,
+        "p95": 672.6460000000001,
+        "p99": 808.824
+      },
+      "elapsed_seconds": 0.151224008,
+      "io_latency_us": {
+        "count": 1000,
+        "p50": 2144.6490000000003,
+        "p95": 2817.364,
+        "p99": 3131.45
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 1197.701,
+        "p95": 2709.2380000000003,
+        "p99": 3026.552
+      },
+      "repetition": 3,
+      "rss_kib": {
+        "after_setup": 3416,
+        "after_work": 3768,
+        "before_work": 3760,
+        "process_baseline": 2800,
+        "sampled_max": 3768,
+        "sampled_max_delta_from_before_work": 8,
+        "setup_delta": 616,
+        "warmup_and_buffers_delta": 344,
+        "work_delta": 8
+      },
+      "tasks_per_second": 13225.413255810548,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.017180228,
+        "rss_after_kib": 3760,
+        "rss_before_kib": 3504
+      }
+    },
+    {
+      "case": "mesut-mixed",
+      "checksum": 15570932600424290358,
+      "completed": 2000,
+      "cpu_latency_us": {
+        "count": 1000,
+        "p50": 699.0260000000001,
+        "p95": 1136.251,
+        "p99": 1758.114
+      },
+      "elapsed_seconds": 0.202502977,
+      "io_latency_us": {
+        "count": 1000,
+        "p50": 2386.89,
+        "p95": 3481.212,
+        "p99": 3674.027
+      },
+      "latency_us": {
+        "count": 2000,
+        "p50": 1809.954,
+        "p95": 3366.833,
+        "p99": 3650.265
+      },
+      "repetition": 3,
+      "rss_kib": {
+        "after_setup": 3292,
+        "after_work": 4300,
+        "before_work": 4144,
+        "process_baseline": 2692,
+        "sampled_max": 4300,
+        "sampled_max_delta_from_before_work": 156,
+        "setup_delta": 600,
+        "warmup_and_buffers_delta": 852,
+        "work_delta": 156
+      },
+      "tasks_per_second": 9876.398014632645,
+      "warmup": {
+        "completed": 256,
+        "elapsed_seconds": 0.021273242,
+        "rss_after_kib": 4144,
+        "rss_before_kib": 3396
+      }
+    }
+  ],
+  "schema_version": 2
+}

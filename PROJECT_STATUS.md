@@ -1,4 +1,66 @@
-# Mesut Project Status — Complete Development Summary
+# Current status — 2026-09-06
+
+The phase report below is historical and overstates production readiness.
+Current development added actual futures/closures, result callbacks, terminal
+lifecycle cleanup, cancellation delegation, atomic admission limits, and a blocking
+pool that exits after shutdown instead of polling forever. See README.md and
+`crates/mesut/examples/real_work.rs` for supported behavior and remaining gaps.
+
+Pipeline execution validates dependency graphs, runs independent stages in
+parallel up to a configurable concurrency limit, passes outputs between
+stages, and propagates errors/cancellation. See the `pipeline` example.
+Submission now runs through a coordination layer with priority-ordered
+admission, Fifo/Priority/LoadAware/Adaptive scheduling,
+Accept/Queue/Reject/Delay/Shed backpressure, task deadlines, and
+`MesuT::scope`/`submit_scoped` structured concurrency. `crates/mesut/tests/load.rs`
+covers sustained mixed load across all three adapters, priority reordering
+under saturation, `Shed` eviction, and adaptive duration-based reordering,
+end to end.
+
+Adaptive routing landed as adaptive *scheduling* rather than adaptive *kind
+inference*: `Work::with_label` plus `SchedulingMode::Adaptive` learn per-label
+wall-clock duration and use it to prefer historically-faster labeled work at
+the same priority tier under contention. The previous `mesut-router`
+CPU%/IO%-based `WorkloadProfile`/`infer_kind` code was removed — nothing fed
+it real data (no CPU/IO instrumentation exists), and `Work::new`'s mandatory
+`WorkKind` gives it no "unclassified work" path to influence. See README.md's
+"Adaptive scheduling" section for the reasoning.
+
+Observability now aggregates real counters instead of exposing an unused
+`RuntimeState`/`ExecutorStats` API: `MesuT::runtime_state()` returns
+cumulative submitted/completed/failed/cancelled totals and per-executor
+stats (live `active_tasks`/`queue_depth`, cumulative `completed_tasks`/
+`failed_tasks`/`total_wall_ms`). The previous `ExecutorStats::total_cpu_ms`
+field was removed rather than left permanently zero — same reasoning as the
+adaptive-routing cleanup: an unmeasurable field that looks measured is worse
+than not having it. `mesut-scheduler::PriorityQueue` remains implemented,
+tested, and genuinely unused — coordination.rs's own admission map and
+scheduling policies supersede it architecturally, so it isn't misleading the
+way the old CPU/IO code was; it's just dead. Not addressed this phase.
+
+A new `crates/mesut/examples/file_bundle.rs` integrates pipelines, parallel
+branches, adaptive scheduling, and observability against one real (if
+synthetic) workload instead of separate synthetic tests: it generates small
+and large files, reads and hashes each (real async file I/O, real per-byte
+FNV-1a compute, not sleeps), writes a manifest, and prints `runtime_state()`
+plus the learned per-label duration profiles. This is the first evidence in
+this codebase of the features working together end-to-end rather than in
+isolated unit/integration tests — addressing, in a small way, the "insufficient
+evidence" verdict on ecosystem integration from the earlier goals assessment.
+
+The workspace builds, and `cargo test --workspace` and
+`cargo clippy --workspace --all-targets -- -D warnings` are clean.
+`docs/benchmark-results.json` currently predates the adaptive-scheduling
+change; a same-day rerun attempt hit host-contention noise strong enough to
+make the numbers untrustworthy (see `docs/benchmark-methodology.md`) and was
+deliberately not committed over the last trustworthy run. Rerun on a quiet
+host before relying on new throughput numbers. The historical phase-completion
+figures below measure old microbenchmarks and should not be read as current
+performance claims.
+
+---
+
+# Historical phase report
 
 ## 🎯 Project Completion Status
 

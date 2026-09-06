@@ -3,12 +3,10 @@ use mesut_executor::ArcExecutor;
 
 pub use classification::*;
 pub use decision::*;
-pub use adaptive::*;
 pub use diagnostics::*;
 
 mod classification;
 mod decision;
-mod adaptive;
 mod diagnostics;
 
 /// Router that determines execution substrate for work.
@@ -172,6 +170,26 @@ impl WorkRouter {
 impl Default for WorkRouter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl WorkRouter {
+    pub fn executors(&self) -> Vec<ArcExecutor> {
+        let mut result: Vec<ArcExecutor> = Vec::new();
+        for executor in [
+            &self.async_executor,
+            &self.compute_executor,
+            &self.blocking_executor,
+            &self.realtime_executor,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if !result.iter().any(|existing| existing.id() == executor.id()) {
+                result.push(executor.clone());
+            }
+        }
+        result
     }
 }
 

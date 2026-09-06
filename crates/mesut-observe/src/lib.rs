@@ -5,10 +5,12 @@ use std::time::SystemTime;
 
 pub use diagnostics::*;
 pub use metrics::*;
+pub use presentation::*;
 pub use tracing::*;
 
 mod diagnostics;
 mod metrics;
+mod presentation;
 mod tracing;
 
 /// Event representing a task lifecycle event.
@@ -124,6 +126,10 @@ impl TraceCollector {
 
     pub fn len(&self) -> usize {
         self.events.read().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.events.read().is_empty()
     }
 }
 

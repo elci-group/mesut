@@ -15,6 +15,10 @@ pub trait Executor: Send + Sync {
     /// Check if this executor is currently available.
     fn is_available(&self) -> bool;
 
+    fn is_shutdown(&self) -> bool {
+        false
+    }
+
     /// Submit work to this executor.
     async fn submit(&self, work: Work) -> TaskResult<Submission>;
 
@@ -27,8 +31,23 @@ pub trait Executor: Send + Sync {
     /// Get the number of currently executing tasks.
     fn active_tasks(&self) -> usize;
 
-    /// Gracefully shutdown this executor.
+    /// Includes completion callbacks still running, where adapters support it.
+    fn is_idle(&self) -> bool {
+        self.active_tasks() == 0
+    }
+
+    /// Reject new work and request cancellation of outstanding tasks.
+    /// Running synchronous jobs remain tracked until they cooperate and exit.
     async fn shutdown(&self) -> TaskResult<()>;
+
+    /// Cancel and wait for all jobs to exit. Running closures must cooperate.
+    async fn shutdown_and_wait(&self) -> TaskResult<()> {
+        self.shutdown().await?;
+        while !self.is_idle() {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        Ok(())
+    }
 
     /// Check if a task is still tracked by this executor.
     async fn is_task_alive(&self, task_id: TaskId) -> bool;
@@ -36,6 +55,27 @@ pub trait Executor: Send + Sync {
 
 /// Type-erased executor for use in collections.
 pub type ArcExecutor = Arc<dyn Executor>;
+
+/// Tracks actual task lifetime, including callbacks and aborted futures.
+#[derive(Clone, Default)]
+pub struct Activity(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Activity {
+    pub fn enter(&self) -> ActivityGuard {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        ActivityGuard(self.clone())
+    }
+    pub fn is_idle(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Acquire) == 0
+    }
+}
+
+pub struct ActivityGuard(Activity);
+impl Drop for ActivityGuard {
+    fn drop(&mut self) {
+        self.0 .0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
 
 /// Result of submitting work to an executor.
 pub struct Submission {
@@ -67,10 +107,7 @@ impl ExecutorPool {
     }
 
     pub fn get(&self, id: ExecutorId) -> Option<ArcExecutor> {
-        self.executors
-            .iter()
-            .find(|e| e.id() == id)
-            .cloned()
+        self.executors.iter().find(|e| e.id() == id).cloned()
     }
 
     pub fn available(&self) -> Vec<ArcExecutor> {

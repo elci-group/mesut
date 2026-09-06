@@ -1,0 +1,13 @@
+[package]
+name = "mesut-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+mesut = { path = "../../crates/mesut" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+rayon = "1"
+serde_json = "1"

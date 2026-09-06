@@ -45,9 +45,7 @@ impl TraceStore {
     }
 
     pub fn add_trace(&self, trace: TaskTrace) {
-        self.traces
-            .write()
-            .insert(trace.task_id.clone(), trace);
+        self.traces.write().insert(trace.task_id.clone(), trace);
     }
 
     pub fn get_trace(&self, task_id: &str) -> Option<TaskTrace> {

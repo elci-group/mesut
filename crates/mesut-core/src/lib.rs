@@ -14,9 +14,7 @@ mod lifecycle;
 mod work;
 
 /// Unique stable task identifier.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TaskId(Uuid);
 
 impl TaskId {
@@ -42,9 +40,7 @@ impl fmt::Display for TaskId {
 }
 
 /// Classification of executable work.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum WorkKind {
     /// I/O-oriented work (network, filesystem, timers).
     Io,
@@ -72,10 +68,11 @@ impl fmt::Display for WorkKind {
 
 /// Priority level for scheduling.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
 )]
 pub enum Priority {
     Low = 0,
+    #[default]
     Normal = 1,
     High = 2,
     Critical = 3,
@@ -89,12 +86,6 @@ impl fmt::Display for Priority {
             Priority::High => write!(f, "High"),
             Priority::Critical => write!(f, "Critical"),
         }
-    }
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Normal
     }
 }
 
@@ -129,7 +120,7 @@ impl fmt::Display for TaskState {
 }
 
 /// Errors that can occur during task execution.
-#[derive(Debug, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum TaskError {
     #[error("task was cancelled")]
     Cancelled,

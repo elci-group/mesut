@@ -1,4 +1,4 @@
-use mesut_core::{TaskError, TaskResult, Work};
+use mesut_core::{TaskError, TaskResult};
 
 /// Backpressure policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
