@@ -1,4 +1,0 @@
-error: failed to parse manifest at `/home/sal/mesut/Cargo.toml`
-
-Caused by:
-  this virtual manifest specifies a `bench` section, which is not allowed
