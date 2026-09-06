@@ -33,10 +33,17 @@ stats (live `active_tasks`/`queue_depth`, cumulative `completed_tasks`/
 `failed_tasks`/`total_wall_ms`). The previous `ExecutorStats::total_cpu_ms`
 field was removed rather than left permanently zero — same reasoning as the
 adaptive-routing cleanup: an unmeasurable field that looks measured is worse
-than not having it. `mesut-scheduler::PriorityQueue` remains implemented,
-tested, and genuinely unused — coordination.rs's own admission map and
-scheduling policies supersede it architecturally, so it isn't misleading the
-way the old CPU/IO code was; it's just dead. Not addressed this phase.
+than not having it.
+
+Two previously-flagged dead-but-plausible-looking pieces are now resolved:
+`mesut-scheduler::PriorityQueue` (superseded by coordination.rs's own dynamic
+priority admission, which needs live cancellation/deadline/executor-load
+state a static tiered queue can't represent) and
+`TokioExecutorConfig::worker_threads` (stored but never read; this adapter
+runs on the caller's ambient Tokio runtime by design, so it isn't Mesut's
+setting to honor) were both removed, along with the now-orphaned
+`benchmark_priority_queue` bench and `priority_queue_ordering` test. See
+README.md's "Removed rather than fixed" section for the reasoning on each.
 
 A new `crates/mesut/examples/file_bundle.rs` integrates pipelines, parallel
 branches, adaptive scheduling, and observability against one real (if

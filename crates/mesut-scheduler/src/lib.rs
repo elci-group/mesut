@@ -1,7 +1,4 @@
-use mesut_core::{Priority, TaskId, TaskResult, Work};
-use parking_lot::Mutex;
-use std::collections::VecDeque;
-use std::sync::Arc;
+use mesut_core::{Priority, TaskId};
 use std::time::Duration;
 
 pub use adaptive::*;
@@ -104,65 +101,6 @@ impl RuntimeState {
     }
 }
 
-/// Priority-based work queue.
-pub struct PriorityQueue {
-    queues: Arc<Mutex<[VecDeque<Work>; 4]>>,
-    max_size: Option<usize>,
-}
-
-impl PriorityQueue {
-    pub fn new(max_size: Option<usize>) -> Self {
-        Self {
-            queues: Arc::new(Mutex::new([
-                VecDeque::new(),
-                VecDeque::new(),
-                VecDeque::new(),
-                VecDeque::new(),
-            ])),
-            max_size,
-        }
-    }
-
-    pub fn enqueue(&self, work: Work) -> TaskResult<()> {
-        let mut queues = self.queues.lock();
-        let size: usize = queues.iter().map(|q| q.len()).sum();
-
-        if let Some(max) = self.max_size {
-            if size >= max {
-                return Err(mesut_core::TaskError::QueueFull);
-            }
-        }
-
-        let priority_idx = match work.priority {
-            Priority::Critical => 3,
-            Priority::High => 2,
-            Priority::Normal => 1,
-            Priority::Low => 0,
-        };
-
-        queues[priority_idx].push_back(work);
-        Ok(())
-    }
-
-    pub fn dequeue(&self) -> Option<Work> {
-        let mut queues = self.queues.lock();
-        for i in (0..4).rev() {
-            if let Some(work) = queues[i].pop_front() {
-                return Some(work);
-            }
-        }
-        None
-    }
-
-    pub fn len(&self) -> usize {
-        self.queues.lock().iter().map(|q| q.len()).sum()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,18 +110,5 @@ mod tests {
         let state = RuntimeState::new();
         assert_eq!(state.total_submitted, 0);
         assert_eq!(state.total_completed, 0);
-    }
-
-    #[test]
-    fn priority_queue_ordering() {
-        let queue = PriorityQueue::new(None);
-        let work_low = Work::new(mesut_core::WorkKind::Io).with_priority(Priority::Low);
-        let work_high = Work::new(mesut_core::WorkKind::Io).with_priority(Priority::High);
-
-        queue.enqueue(work_low).unwrap();
-        queue.enqueue(work_high).unwrap();
-
-        let first = queue.dequeue().unwrap();
-        assert_eq!(first.priority, Priority::High);
     }
 }

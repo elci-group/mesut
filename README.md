@@ -124,11 +124,33 @@ uses. See `crates/mesut/tests/load.rs` for an end-to-end test that builds
 duration history for two labels under real load and confirms `Adaptive`
 scheduling reorders queued work by it.
 
-Tokio's worker-thread setting does not configure the caller's runtime. The
-historical completion reports do not establish production readiness; see
+The historical completion reports do not establish production readiness; see
 `docs/benchmark-methodology.md` and `docs/benchmark-results.json` for
 end-to-end throughput numbers (currently predating this change — see that
 file for why).
+
+## Removed rather than fixed
+
+Two more pieces turned out to be the same "plausible but disconnected" shape
+as the CPU/IO adaptive-routing code retired earlier, and were removed instead
+of left as silent no-ops:
+
+- `TokioExecutorConfig::worker_threads` was stored but never read by
+  anything. This adapter spawns onto the caller's ambient Tokio runtime
+  (`tokio::task::spawn`), so its worker-thread count is controlled by
+  whichever `#[tokio::main]`/`Runtime::Builder` started that runtime, not by
+  Mesut — spinning up a second, separately-configured runtime just to honor
+  this setting would be a larger and likely worse design (two runtimes
+  competing for OS threads) than the library not offering the knob.
+- `mesut-scheduler::PriorityQueue` was a complete, tested, four-tier priority
+  queue that nothing used: `mesut-runtime::coordination` does its own
+  priority-ordered admission and dispatch, and needs to re-evaluate every
+  pending task on every dispatch decision (cancellation, deadlines,
+  executor availability, and for `LoadAware`/`Adaptive` modes, a live score)
+  in a way a static tiered queue can't represent. Unlike the removed CPU/IO
+  code, `PriorityQueue` never claimed capability it didn't have — it was
+  correct and simply superseded. Retired instead of kept as a second,
+  unused priority mechanism alongside the real one.
 
 ## Observability
 

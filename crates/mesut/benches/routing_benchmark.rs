@@ -73,34 +73,5 @@ fn benchmark_work_creation(c: &mut Criterion) {
     });
 }
 
-fn benchmark_priority_queue(c: &mut Criterion) {
-    use mesut_scheduler::PriorityQueue;
-
-    let queue = PriorityQueue::new(Some(1000));
-
-    c.bench_function("enqueue_normal_priority", |b| {
-        b.iter(|| {
-            let work = black_box(mesut_core::Work::new(WorkKind::Io));
-            let _result = queue.enqueue(work);
-        })
-    });
-
-    c.bench_function("dequeue", |b| {
-        // Pre-populate queue
-        for _ in 0..100 {
-            let _ = queue.enqueue(mesut_core::Work::new(WorkKind::Io));
-        }
-
-        b.iter(|| {
-            let _work = queue.dequeue();
-        })
-    });
-}
-
-criterion_group!(
-    benches,
-    benchmark_routing,
-    benchmark_work_creation,
-    benchmark_priority_queue
-);
+criterion_group!(benches, benchmark_routing, benchmark_work_creation);
 criterion_main!(benches);

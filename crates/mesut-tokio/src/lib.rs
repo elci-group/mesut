@@ -17,27 +17,27 @@ pub struct TokioExecutor {
 }
 
 /// Configuration for Tokio executor.
+///
+/// There is no `worker_threads` setting: this adapter spawns onto the
+/// caller's ambient Tokio runtime (`tokio::task::spawn`) rather than owning
+/// a dedicated one, so its worker-thread count is controlled by whichever
+/// `#[tokio::main]`/`Runtime::Builder` started that runtime, not by this
+/// config. An earlier version had a `worker_threads` field that was stored
+/// but never read by anything — removed rather than left as a silent no-op.
 #[derive(Clone, Debug)]
 pub struct TokioExecutorConfig {
     pub max_queue_size: Option<usize>,
-    pub worker_threads: Option<usize>,
 }
 
 impl TokioExecutorConfig {
     pub fn new() -> Self {
         Self {
             max_queue_size: Some(10000),
-            worker_threads: None,
         }
     }
 
     pub fn with_max_queue_size(mut self, size: usize) -> Self {
         self.max_queue_size = Some(size);
-        self
-    }
-
-    pub fn with_worker_threads(mut self, threads: usize) -> Self {
-        self.worker_threads = Some(threads);
         self
     }
 }
