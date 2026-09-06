@@ -4,6 +4,13 @@ A Rust-native unified execution orchestration layer for heterogeneous workloads.
 
 Mesut operates as an execution router and scheduler, determining the appropriate execution substrate (Tokio for I/O, Rayon for compute, blocking workers) for application work.
 
+Mesut's default terminal output follows each task with an adaptive
+"scan → lane → assist" animation inspired by Özil's playmaking. It is
+lifecycle-driven, adds no artificial delay, and automatically stays quiet in
+CI or when stderr is redirected. Set `MESUT_ANIMATIONS=always` to force it,
+`MESUT_ANIMATIONS=never` to suppress it, or use
+`RuntimeConfig::new().with_animations(false)` for a programmatic opt-out.
+
 ## Architecture
 
 ```
@@ -54,3 +61,4 @@ Implement core execution model, adapters for Tokio/Rayon/Blocking, and end-to-en
 ## License
 
 Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+# mesut
