@@ -441,16 +441,27 @@ fn evaluate_gates(
             .fold(None, |acc: Option<(f64, f64)>, (m, v)| {
                 acc.map_or(Some((m, v)), |(bm, bv)| if v > bv { Some((m, v)) } else { acc })
             });
-        gates.push(json!({
-            "gate": "B",
-            "name": "long-class-dispatched-within-aging-bound",
-            "passed": p99_long <= bound,
-            "detail": format!(
-                "worst long-class p99 queue {p99_long:.1}ms at x{multiplier} vs bound {bound:.1}ms (aging {aging}ms)"
-            ),
-        }));
-    }
-
+        if let Some((multiplier, p99_long)) = long_p99 {
+            let aging = base.adaptive_aging.unwrap_or(250.0);
+            // Bound: aging threshold + a drain quantum of short work per
+            // worker + 150ms slack (matches the batch-gate derivation,
+            // adapted to sustained arrivals using p50 short service).
+            let short_service = median_metric(cells, multiplier, SchedulerMode::Adaptive, |r| {
+                r.p50_short_total_ms
+            })
+            .filter(|v| v.is_finite())
+            .unwrap_or(5.0);
+            let workers = base.worker_count as f64;
+            let bound = aging + 2.0 * short_service * workers + 150.0;
+            gates.push(json!({
+                "gate": "B",
+                "name": "long-class-dispatched-within-aging-bound",
+                "passed": p99_long <= bound,
+                "detail": format!(
+                    "worst long-class p99 queue {p99_long:.1}ms at x{multiplier} vs bound {bound:.1}ms (aging {aging}ms)"
+                ),
+            }));
+        }
     }
 
     // Gate C — adaptive utility: >= 25% improvement (p50 short-class or
