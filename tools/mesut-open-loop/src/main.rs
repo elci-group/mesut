@@ -71,6 +71,8 @@ struct RunArgs {
     out: Option<PathBuf>,
     mode: Option<SchedulerMode>,
     seed: Option<u64>,
+    duration: Option<f64>,
+    warmup: Option<f64>,
     quiet: bool,
 }
 
@@ -81,6 +83,8 @@ fn parse_run_args(argv: &[String]) -> Result<RunArgs> {
         out: None,
         mode: None,
         seed: None,
+        duration: None,
+        warmup: None,
         quiet: false,
     };
     let mut it = argv.iter();
@@ -91,8 +95,10 @@ fn parse_run_args(argv: &[String]) -> Result<RunArgs> {
                 parsed.config_path = Some(PathBuf::from(it.next().ok_or("--config needs a value")?))
             }
             "--out" => parsed.out = Some(PathBuf::from(it.next().ok_or("--out needs a value")?)),
-            "--mode" => parsed.mode = Some(parse_mode(&it.next().ok_or("--mode needs a value")?)?),
+            "--mode" => parsed.mode = Some(parse_mode(it.next().ok_or("--mode needs a value")?)?),
             "--seed" => parsed.seed = Some(it.next().ok_or("--seed needs a value")?.parse().map_err(|_| "bad seed")?),
+            "--duration" => parsed.duration = Some(it.next().ok_or("--duration needs a value")?.parse().map_err(|_| "bad duration")?),
+            "--warmup" => parsed.warmup = Some(it.next().ok_or("--warmup needs a value")?.parse().map_err(|_| "bad warmup")?),
             "--quiet" => parsed.quiet = true,
             other => return Err(format!("unknown flag: {other}")),
         }
@@ -119,7 +125,7 @@ fn load_config(args: &RunArgs) -> Result<RunConfig> {
         (None, Some(path)) => {
             let text = std::fs::read_to_string(path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
-            serde_json::from_str::<serde_json::Value>(&text)
+            serde_json::from_str(&text)
                 .map_err(|e| format!("parse {}: {e}", path.display()))?
         }
         (None, None) => return Err("one of --preset or --config is required".into()),
@@ -131,6 +137,12 @@ fn load_config(args: &RunArgs) -> Result<RunConfig> {
     }
     if let Some(seed) = args.seed {
         config.seed = seed;
+    }
+    if let Some(duration) = args.duration {
+        config.duration = duration;
+    }
+    if let Some(warmup) = args.warmup {
+        config.warmup_duration = warmup;
     }
     Ok(config)
 }

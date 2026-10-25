@@ -149,6 +149,7 @@ impl RunConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("read {}: {e}", path.display()))?;
