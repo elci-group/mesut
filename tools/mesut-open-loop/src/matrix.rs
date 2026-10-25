@@ -13,6 +13,8 @@ struct MatrixArgs {
     modes: Vec<SchedulerMode>,
     reps: usize,
     multipliers: Vec<f64>,
+    duration: Option<f64>,
+    warmup: Option<f64>,
     out_dir: PathBuf,
 }
 
@@ -44,6 +46,8 @@ fn parse_args(argv: &[String]) -> Result<MatrixArgs, String> {
         modes: SchedulerMode::ALL.to_vec(),
         reps: 25,
         multipliers: vec![0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5],
+        duration: None,
+        warmup: None,
         out_dir: PathBuf::from("docs/evidence/raw/open-loop-matrix"),
     };
     let mut it = argv.iter();
@@ -61,6 +65,8 @@ fn parse_args(argv: &[String]) -> Result<MatrixArgs, String> {
                     parse_multipliers(it.next().ok_or("--multipliers needs a value")?)?
             }
             "--out" => args.out_dir = PathBuf::from(it.next().ok_or("--out needs a value")?),
+            "--duration" => args.duration = Some(it.next().ok_or("--duration needs a value")?.parse().map_err(|_| "bad duration")?),
+            "--warmup" => args.warmup = Some(it.next().ok_or("--warmup needs a value")?.parse().map_err(|_| "bad warmup")?),
             other => return Err(format!("unknown flag: {other}")),
         }
     }
@@ -140,8 +146,10 @@ fn metric_names() -> Vec<(&'static str, fn(&RepMetrics) -> f64)> {
         ("shed", |m| m.shed),
         ("undrained", |m| m.undrained),
         ("lambda_over_mu", |m| m.lambda_over_mu),
+        ("completed", |m| m.completed),
         ("p50_short_total_ms", |m| m.p50_short_total_ms),
         ("p99_long_queue_ms", |m| m.p99_long_queue_ms),
+        ("long_completion_rate", |m| m.long_completion_rate),
     ]
 }
 
@@ -180,13 +188,19 @@ pub fn cmd_matrix(argv: &[String]) -> i32 {
             return 2;
         }
     };
-    let base: RunConfig = match serde_json::from_value(value) {
+    let mut base: RunConfig = match serde_json::from_value(value) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("config: {e}");
             return 2;
         }
     };
+    if let Some(duration) = args.duration {
+        base.duration = duration;
+    }
+    if let Some(warmup) = args.warmup {
+        base.warmup_duration = warmup;
+    }
     let base_seed = base.seed;
     let name = base.name.clone();
 
@@ -439,7 +453,7 @@ fn evaluate_gates(
                     .map(|v| (m, v))
             })
             .fold(None, |acc: Option<(f64, f64)>, (m, v)| {
-                acc.map_or(Some((m, v)), |(bm, bv)| if v > bv { Some((m, v)) } else { acc })
+                acc.map_or(Some((m, v)), |(_bm, bv)| if v > bv { Some((m, v)) } else { acc })
             });
         if let Some((multiplier, p99_long)) = long_p99 {
             let aging = base.adaptive_aging.unwrap_or(250.0);
