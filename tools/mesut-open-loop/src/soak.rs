@@ -140,6 +140,8 @@ pub fn cmd_soak(argv: &[String]) -> i32 {
     let first_quarter = &measured[..quarter];
     let last_quarter = &measured[n - quarter..];
 
+    fn pick_threads(s: &engine::Sample) -> Option<f64> { s.threads.map(|v| v as f64) }
+    fn pick_fds(s: &engine::Sample) -> Option<f64> { s.fds.map(|v| v as f64) }
     let series = |pick: fn(&engine::Sample) -> Option<f64>| -> Vec<(f64, f64)> {
         measured
             .iter()
@@ -175,8 +177,8 @@ pub fn cmd_soak(argv: &[String]) -> i32 {
 
     // Threads and fds: last quarter vs first quarter, tolerant of jitter.
     for (name, pick) in [
-        ("threads", |s: &engine::Sample| s.threads.map(|v| v as f64)),
-        ("open-fds", |s: &engine::Sample| s.fds.map(|v| v as f64)),
+        ("threads", (|s: &engine::Sample| s.threads.map(|v| v as f64)) as fn(&engine::Sample) -> Option<f64>),
+        ("open-fds", (|s: &engine::Sample| s.fds.map(|v| v as f64)) as fn(&engine::Sample) -> Option<f64>),
     ] {
         let first: Vec<f64> = first_quarter.iter().filter_map(|s| pick(s)).collect();
         let last: Vec<f64> = last_quarter.iter().filter_map(|s| pick(s)).collect();
@@ -284,19 +286,12 @@ pub fn cmd_soak(argv: &[String]) -> i32 {
 }
 
 fn scale_rates(cfg: &mut RunConfig, _rate: f64) {
-    // Preset rates already set; hook for explicit --rate scaling of
-    // multi-rate processes.
+    // Preset rates already set; --rate only pins fixed/poisson rates.
     use mesut_benchkit::ArrivalProcess;
     match &mut cfg.arrival.process {
         ArrivalProcess::Fixed { rate } | ArrivalProcess::Poisson { rate } => {
             *rate = cfg.arrival.arrival_rate;
         }
-        ArrivalProcess::Alternating { low_rate, high_rate, .. } => {
-            let ratio = cfg.arrival.arrival_rate / cfg.arrival.arrival_rate.max(1.0);
-            let _ = ratio;
-            // Explicit rate keeps the preset's shape; scaled via arrival_rate
-            // only for fixed/poisson.
-        }
-        ArrivalProcess::Bursty { .. } => {}
+        ArrivalProcess::Alternating { .. } | ArrivalProcess::Bursty { .. } => {}
     }
 }
