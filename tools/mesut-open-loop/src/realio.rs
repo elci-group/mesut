@@ -118,8 +118,9 @@ async fn fixtures() -> Result<Fixtures, String> {
         loop {
             let Ok((mut socket, _)) = listener.accept().await else { return };
             tokio::spawn(async move {
+                let (mut reader, mut writer) = socket.split();
                 let mut mode_byte = [0u8; 1];
-                if tokio::io::AsyncReadExt::read_exact(&mut socket, &mut mode_byte)
+                if tokio::io::AsyncReadExt::read_exact(&mut reader, &mut mode_byte)
                     .await
                     .is_err()
                 {
@@ -128,21 +129,21 @@ async fn fixtures() -> Result<Fixtures, String> {
                 match mode_byte[0] {
                     // 1: echo; 2: delay 5ms then echo; 3: delay 0..10ms; 4: stream 1MiB.
                     1 => {
-                        let _ = tokio::io::copy(&mut socket, &mut socket).await;
+                        let _ = tokio::io::copy(&mut reader, &mut writer).await;
                     }
                     2 => {
                         tokio::time::sleep(Duration::from_millis(5)).await;
-                        let _ = tokio::io::copy(&mut socket, &mut socket).await;
+                        let _ = tokio::io::copy(&mut reader, &mut writer).await;
                     }
                     3 => {
                         tokio::time::sleep(Duration::from_millis((rand_jitter() % 10) as u64))
                             .await;
-                        let _ = tokio::io::copy(&mut socket, &mut socket).await;
+                        let _ = tokio::io::copy(&mut reader, &mut writer).await;
                     }
                     _ => {
                         let chunk = vec![0u8; 64 * 1024];
                         for _ in 0..16 {
-                            if tokio::io::AsyncWriteExt::write_all(&mut socket, &chunk)
+                            if tokio::io::AsyncWriteExt::write_all(&mut writer, &chunk)
                                 .await
                                 .is_err()
                             {
@@ -151,6 +152,7 @@ async fn fixtures() -> Result<Fixtures, String> {
                         }
                     }
                 }
+                drop(writer);
             });
         }
     });
@@ -271,7 +273,8 @@ async fn one_scenario(
             let latencies = Arc::new(std::sync::Mutex::new(Vec::new()));
             let completed = Arc::new(AtomicUsize::new(0));
             for index in 0..ops {
-                let (latencies, completed) = (latencies.clone(), completed.clone());
+                let latencies = latencies.clone();
+                let completed = completed.clone();
                 let dir = dir.clone();
                 let submitted = std::time::Instant::now();
                 let work = match name {
@@ -360,7 +363,7 @@ async fn one_scenario(
                         .write_all(&[9, 0])
                         .await
                         .map_err(|e| mesut::TaskError::ExecutionFailed(e.to_string()))?;
-                    let mut remaining = 1024 * 1024;
+                    let mut remaining: usize = 1024 * 1024;
                     let mut buf = vec![0u8; 64 * 1024];
                     while remaining > 0 {
                         let read = stream
