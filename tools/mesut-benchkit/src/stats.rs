@@ -72,7 +72,9 @@ pub fn bootstrap_ci(
 }
 
 pub fn describe(values: &[f64]) -> Option<Describe> {
-    let non_empty = !values.is_empty()?;
+    if values.is_empty() {
+        return None;
+    }
     Some(Describe {
         count: values.len(),
         mean: mean(values),
@@ -85,10 +87,7 @@ pub fn describe(values: &[f64]) -> Option<Describe> {
         p999: percentile(values, 0.999),
         max: values.iter().copied().fold(f64::MIN, f64::max),
         p50_ci95: bootstrap_ci(values, |v| percentile(v, 0.5), 2_000, 0xB00C),
-    }
-    .filter(|_| non_empty)
-)
-
+    })
 }
 
 /// Paired comparison between two systems measured over the same run seeds.
