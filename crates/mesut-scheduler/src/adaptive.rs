@@ -78,11 +78,28 @@ impl WorkloadObserver {
     /// Callers must pass the execution phase only (job start to job return);
     /// recording a queue-inclusive total would poison the service-time
     /// estimate under load, exactly when scheduling decisions matter.
+    ///
+    /// If the label's previous profile expired past the TTL, the retained
+    /// window is discarded first: post-expiry samples must not average
+    /// against a stale shape.
     pub fn record(&self, label: &str, duration: Duration) {
         {
             let mut history = self.history.write();
+            let expired = self
+                .ttl
+                .is_some_and(|ttl| {
+                    self.last_updated
+                        .read()
+                        .get(label)
+                        .is_some_and(|last| last.elapsed() > ttl)
+                });
             let samples = match history.get_mut(label) {
-                Some(samples) => samples,
+                Some(samples) => {
+                    if expired {
+                        samples.clear();
+                    }
+                    samples
+                }
                 None => {
                     if history.len() >= self.max_labels {
                         drop(history);
@@ -238,10 +255,15 @@ mod tests {
 
     #[test]
     fn profile_expires_after_ttl_so_stale_estimates_cannot_persist() {
-        let observer = WorkloadObserver::with_limits(4, 8).with_ttl(Some(Duration::from_millis(40)));
+        let observer =
+            WorkloadObserver::with_limits(4, 8).with_ttl(Some(Duration::from_millis(150)));
         observer.record("regime", Duration::from_secs(1));
         assert!(observer.profile("regime").is_some());
-        std::thread::sleep(Duration::from_millis(60));
+        // Wait out the TTL with polling slack for loaded hosts.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline && observer.profile("regime").is_some() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
         // A label that stops completing reads as unseen work: its stale
         // estimate cannot misorder new tasks indefinitely.
         assert!(observer.profile("regime").is_none());
