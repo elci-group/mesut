@@ -219,8 +219,8 @@ where
         let deadline = std::time::Instant::now() + Duration::from_secs(60);
         while completed.load(Ordering::Acquire) < index {
             if std::time::Instant::now() > deadline {
-                let _ = std::fs::remove_dir_all(&std::env::temp_dir().join("mesut-realio-stuck"));
-                return latencies_lock(latencies, completed);
+                // Hung operation: abort the scenario with what completed.
+                return latencies.lock().unwrap().clone();
             }
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
