@@ -9,6 +9,7 @@ pub mod dist;
 pub mod env;
 pub mod rng;
 pub mod stats;
+pub mod workload;
 
 pub use arrival::ArrivalProcess;
 pub use dist::{DeadlineDist, PriorityDist, ServiceDist, WorkKindDist};
