@@ -244,6 +244,8 @@ dependencies = [
  "mesut-blocking",
  "mesut-core",
  "mesut-rayon",
+ "mesut-scheduler",
+ "rayon",
  "serde",
  "serde_json",
  "tokio",

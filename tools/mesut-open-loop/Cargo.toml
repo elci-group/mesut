@@ -1,0 +1,19 @@
+[package]
+name = "mesut-open-loop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+mesut = { path = "../../crates/mesut" }
+mesut-core = { path = "../../crates/mesut-core" }
+mesut-benchkit = { path = "../mesut-benchkit" }
+mesut-rayon = { path = "../../crates/mesut-rayon" }
+mesut-blocking = { path = "../../crates/mesut-blocking" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1.8"
+mesut-scheduler = { path = "../../crates/mesut-scheduler" }

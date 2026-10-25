@@ -253,7 +253,7 @@ fn selection_cost(candidates_count: usize, iterations: usize) -> Value {
             sequence: index as u64,
             executor_active: (index % 4) as usize,
             expected_service_time: Some(Duration::from_micros(rng.uniform_range(100.0, 50_000.0) as u64)),
-            waited: Duration::from_micros(rng.uniform_range(0.0, 500.0)),
+            waited: Duration::from_micros(rng.uniform_range(0.0, 500.0) as u64),
         });
     }
     let measure = |name: &str, policy: &dyn SchedulingPolicy| {
