@@ -169,12 +169,10 @@ async fn adaptive_scheduling_prefers_labels_with_shorter_learned_duration() {
         wait(rx).await.unwrap();
     }
     assert!(
-        runtime.workload_profile("slow").unwrap().mean_service_time
-            >= Duration::from_millis(20)
+        runtime.workload_profile("slow").unwrap().mean_service_time >= Duration::from_millis(20)
     );
     assert!(
-        runtime.workload_profile("fast").unwrap().mean_service_time
-            < Duration::from_millis(10)
+        runtime.workload_profile("fast").unwrap().mean_service_time < Duration::from_millis(10)
     );
 
     // Saturate the single in-flight slot, then queue slow-labeled work

@@ -43,7 +43,8 @@ async fn shutdown_force_terminates_when_closure_refuses_to_cooperate() {
     runtime.submit(uncooperative).await.unwrap();
     started_rx.await.unwrap();
 
-    let queued = Work::new(WorkKind::Blocking).with_job(|_| panic!("force-terminated queued work must not run"));
+    let queued = Work::new(WorkKind::Blocking)
+        .with_job(|_| panic!("force-terminated queued work must not run"));
     let (queued, queued_done) = {
         let (tx, rx) = oneshot::channel();
         (

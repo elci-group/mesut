@@ -123,10 +123,7 @@ impl TaskTiming {
             .started?
             .duration_since(stamps.dispatched?)
             .as_micros() as u64;
-        let execution_us = stamps
-            .job_end?
-            .duration_since(stamps.started?)
-            .as_micros() as u64;
+        let execution_us = stamps.job_end?.duration_since(stamps.started?).as_micros() as u64;
         let completion_us = stamps
             .completed?
             .duration_since(stamps.job_end?)

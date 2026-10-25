@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 pub use identifier::*;
 pub use lifecycle::*;
-pub use timing::{LatencyPhases, TaskTiming, thread_cpu_ns};
+pub use timing::{thread_cpu_ns, LatencyPhases, TaskTiming};
 pub use work::{ResourceHint, RoutingHint, Work};
 
 mod identifier;

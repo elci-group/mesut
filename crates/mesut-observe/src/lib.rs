@@ -24,10 +24,18 @@ pub struct TaskEvent {
 /// Types of task events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskEventType {
-    Submitted { work_kind: WorkKind },
-    Routed { route: String },
-    Queued { queue_depth: usize },
-    Started { executor_id: String },
+    Submitted {
+        work_kind: WorkKind,
+    },
+    Routed {
+        route: String,
+    },
+    Queued {
+        queue_depth: usize,
+    },
+    Started {
+        executor_id: String,
+    },
     /// `duration_ms` is the queue-inclusive submit-to-completion total;
     /// `phases` carries the split and is `None` when the task was cancelled
     /// or failed before it ever started executing.
@@ -35,8 +43,12 @@ pub enum TaskEventType {
         duration_ms: u128,
         phases: Option<LatencyPhases>,
     },
-    Failed { error: String },
-    Cancelled { reason: String },
+    Failed {
+        error: String,
+    },
+    Cancelled {
+        reason: String,
+    },
 }
 
 impl TaskEvent {
@@ -76,7 +88,10 @@ impl TaskEvent {
         Self {
             timestamp: SystemTime::now(),
             task_id,
-            event_type: TaskEventType::Completed { duration_ms, phases },
+            event_type: TaskEventType::Completed {
+                duration_ms,
+                phases,
+            },
         }
     }
 

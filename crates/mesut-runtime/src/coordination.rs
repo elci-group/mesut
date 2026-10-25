@@ -3,7 +3,7 @@ use mesut_core::{CancellationToken, Priority, TaskError, TaskId, TaskResult, Tas
 use mesut_executor::ArcExecutor;
 use mesut_observe::{EventObserver, TaskEvent};
 use mesut_scheduler::{
-    AdaptiveSchedulingPolicy, BackpressurePolicy, DefaultSchedulingPolicy,
+    AdaptiveSchedulingPolicy, BackpressurePolicy, DefaultSchedulingPolicy, LatencyHistogram,
     LoadAwareSchedulingPolicy, PrioritySchedulingPolicy, SchedulingCandidate, SchedulingMode,
     SchedulingPolicy, ShutdownState, WorkloadObserver,
 };
@@ -42,17 +42,24 @@ pub(crate) struct Coordination {
     pub changed: Notify,
     pub config: RuntimeConfig,
     pub workload: WorkloadObserver,
+    /// Runtime-level latency histograms (WS12 operator contract); bounded
+    /// cardinality by construction.
+    pub queue_latency: LatencyHistogram,
+    pub execution_latency: LatencyHistogram,
 }
 
 impl Coordination {
     pub fn new(config: RuntimeConfig, observer: Arc<dyn EventObserver>) -> Arc<Self> {
-        let workload = WorkloadObserver::new(config.adaptive_window);
+        let workload =
+            WorkloadObserver::with_limits(config.adaptive_window, config.adaptive_max_labels);
         Arc::new(Self {
             state: Mutex::new(State::default()),
             observer: RwLock::new(observer),
             changed: Notify::new(),
             config,
             workload,
+            queue_latency: LatencyHistogram::default(),
+            execution_latency: LatencyHistogram::default(),
         })
     }
 
@@ -77,9 +84,7 @@ impl Coordination {
         let start = Instant::now();
         // Adopt a caller-attached timing handle (measurement tools) or create
         // the one this task's phases are recorded into.
-        let timing = work
-            .timing()
-            .unwrap_or_else(|| TaskTiming::new().shared());
+        let timing = work.timing().unwrap_or_else(|| TaskTiming::new().shared());
         timing.mark_submitted();
         let deadline = match timeout {
             Some(duration) => Some((
@@ -155,8 +160,7 @@ impl Coordination {
                                 dispatched: false,
                                 cancellation_sent: false,
                                 deadline,
-                                admitted_at: admitted_at
-                                    .unwrap_or_else(Instant::now),
+                                admitted_at: admitted_at.unwrap_or_else(Instant::now),
                                 timing: timing.clone(),
                             },
                         );
@@ -198,7 +202,10 @@ impl Coordination {
                     self.reject(work, error.clone());
                     return Err(error);
                 }
-                Admission::Shed(Some(victim)) => (*victim).finish(Err(TaskError::QueueFull)),
+                Admission::Shed(Some(victim)) => {
+                    self.state.lock().runtime_state.add_shed();
+                    (*victim).finish(Err(TaskError::QueueFull));
+                }
                 Admission::Shed(None) => (),
                 Admission::Wait => {
                     tokio::select! { _ = &mut notified => (), _ = tokio::time::sleep(Duration::from_millis(1)) => () }
@@ -232,6 +239,16 @@ impl Coordination {
                         if let (Some(label), Some(execution)) = (&label, execution) {
                             shared.workload.record(label, execution);
                         }
+                    }
+                    // Operator histograms: queue wait for every dispatched
+                    // task; execution time for tasks that ran.
+                    if let Some(phases) = &phases {
+                        shared.queue_latency.record_us(phases.queue_us);
+                    }
+                    if let Some(execution) = execution {
+                        shared
+                            .execution_latency
+                            .record_us(execution.as_micros().try_into().unwrap_or(u64::MAX));
                     }
                     {
                         let mut state = shared.state.lock();
@@ -274,7 +291,7 @@ impl Coordination {
     }
 
     fn reject(&self, work: Work, error: TaskError) {
-        self.state.lock().runtime_state.add_failure();
+        self.state.lock().runtime_state.add_rejection();
         self.observe(TaskEvent::failed(work.id, error.to_string()));
         work.finish(Err(error));
     }
@@ -401,14 +418,7 @@ impl Coordination {
             state
                 .tasks
                 .drain()
-                .map(|(id, entry)| {
-                    (
-                        id,
-                        entry.pending,
-                        entry.executor,
-                        entry.token.clone(),
-                    )
-                })
+                .map(|(id, entry)| (id, entry.pending, entry.executor, entry.token.clone()))
                 .collect()
         };
         self.changed.notify_waiters();

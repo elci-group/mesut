@@ -130,7 +130,9 @@ mod tests {
     fn adaptive_prefers_shorter_history_at_same_priority() {
         let slow = candidate(Priority::Normal, 0, Some(Duration::from_secs(10)));
         let fast = candidate(Priority::Normal, 1, Some(Duration::from_millis(1)));
-        let selected = AdaptiveSchedulingPolicy::new(None).select(&[slow, fast]).unwrap();
+        let selected = AdaptiveSchedulingPolicy::new(None)
+            .select(&[slow, fast])
+            .unwrap();
         assert_eq!(selected, fast.task_id);
     }
 
@@ -170,9 +172,7 @@ mod tests {
             starved_long.task_id
         );
         assert_eq!(
-            policy
-                .select(&[fresh_short_b, fresh_short_a])
-                .unwrap(),
+            policy.select(&[fresh_short_b, fresh_short_a]).unwrap(),
             fresh_short_a.task_id
         );
     }

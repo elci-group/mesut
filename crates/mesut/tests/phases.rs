@@ -76,9 +76,7 @@ async fn phases_split_queue_dispatch_execution_and_completion() {
     release_tx.send(()).unwrap();
     wait(occupier_done).await.unwrap();
     wait(victim_done).await.unwrap();
-    timing_rx
-        .await
-        .unwrap();
+    timing_rx.await.unwrap();
 
     let completed = collector
         .events()

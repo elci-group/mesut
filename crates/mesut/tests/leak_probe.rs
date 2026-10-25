@@ -20,7 +20,12 @@ use std::sync::Arc;
 fn rss_bytes() -> u64 {
     let status = std::fs::read_to_string("/proc/self/status").unwrap();
     let line = status.lines().find(|l| l.starts_with("VmRSS:")).unwrap();
-    line.split_whitespace().nth(1).unwrap().parse::<u64>().unwrap() * 1024
+    line.split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse::<u64>()
+        .unwrap()
+        * 1024
 }
 
 #[cfg(target_os = "linux")]
