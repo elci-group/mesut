@@ -503,27 +503,33 @@ fn summarise(
 
     // Per-label latency and starvation detail.
     let mut per_label: BTreeMap<String, Vec<&TaskRecord>> = BTreeMap::new();
-    for record in &completed {
+    for record in measured.iter().copied() {
         per_label.entry(record.label.clone()).or_default().push(record);
     }
     let mut labels_json = serde_json::Map::new();
     for (label, label_records) in &per_label {
-        let label_queues: Vec<f64> = label_records
+        let label_completed: Vec<&TaskRecord> =
+            label_records.iter().copied().filter(|r| r.outcome == Outcome::Completed).collect();
+        let label_queues: Vec<f64> = label_completed
             .iter()
             .filter_map(|r| r.queue_us.map(|us| us as f64 / 1e3))
             .collect();
-        let label_totals: Vec<f64> = label_records
+        let label_totals: Vec<f64> = label_completed
             .iter()
             .filter_map(|r| r.total_us.map(|us| us as f64 / 1e3))
             .collect();
-        let starved = label_records
+        let starved = label_completed
             .iter()
             .filter(|r| r.queue_us.is_some_and(|q| q as f64 / 1e3 > config.starvation_threshold))
             .count();
         labels_json.insert(
             label.clone(),
             json!({
-                "completed": label_records.len(),
+                "submitted": label_records.len(),
+                "completed": label_completed.len(),
+                "completion_rate": if label_records.is_empty() { Value::Null } else {
+                    json!(label_completed.len() as f64 / label_records.len() as f64)
+                },
                 "total_ms": dist_json(label_totals),
                 "queue_ms": dist_json(label_queues),
                 "starved_over_threshold": starved,
