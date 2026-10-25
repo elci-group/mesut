@@ -24,20 +24,20 @@ fn cpu_governor() -> Value {
     read_trim(
         "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
     )
-    .map(json)
+    .map(|v| json!(v))
     .unwrap_or(Value::Null)
 }
 
 fn kernel() -> Value {
-    read_trim("/proc/sys/kernel/osrelease").map(json).unwrap_or(Value::Null)
+    read_trim("/proc/sys/kernel/osrelease").map(|v| json!(v)).unwrap_or(Value::Null)
 }
 
 fn hostname() -> Value {
-    read_trim("/proc/sys/kernel/hostname").map(json).unwrap_or(Value::Null)
+    read_trim("/proc/sys/kernel/hostname").map(|v| json!(v)).unwrap_or(Value::Null)
 }
 
 fn loadavg() -> Value {
-    read_trim("/proc/loadavg").map(json).unwrap_or(Value::Null)
+    read_trim("/proc/loadavg").map(|v| json!(v)).unwrap_or(Value::Null)
 }
 
 fn rustc_version() -> Value {
@@ -92,12 +92,16 @@ pub fn machine_json() -> Value {
 
 /// Resident set size in bytes, where the platform exposes it (Linux).
 pub fn rss_bytes() -> Option<u64> {
+    // VmRSS from /proc/self/status is exact and carries no page-size
+    // assumption; statm is the fallback.
+    if let Some(status) = read_trim("/proc/self/status") {
+        let line = status.lines().find(|l| l.starts_with("VmRSS:"))?;
+        let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+        return Some(kb * 1024);
+    }
     let statm = read_trim("/proc/self/statm")?;
     let pages = statm.split_whitespace().nth(1)?.parse::<u64>().ok()?;
-    let page_size = read_trim("/proc/sys/vm/default_page_size")?
-        .parse::<u64>()
-        .unwrap_or(4096);
-    Some(pages * page_size)
+    Some(pages * 4096)
 }
 
 /// Total process CPU time (user + system) in nanoseconds, Linux only.
