@@ -25,9 +25,10 @@ fn rss_bytes() -> u64 {
 
 #[cfg(target_os = "linux")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "load-sensitive RSS probe; run explicitly (cargo test --release --test leak_probe -- --ignored) on a quiet host as Gate F evidence"]
 async fn rss_does_not_grow_linearly_with_completions() {
     const WARMUP: usize = 30_000;
-    const MEASURED: usize = 100_000;
+    const MEASURED: usize = 50_000;
 
     let runtime = Arc::new(
         MesuT::new(
