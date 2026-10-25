@@ -23,6 +23,8 @@ async fn main() {
 
     // Settle allocator with a warmup wave through the same path.
     async fn wave(scenario: &str, done: Arc<AtomicUsize>, count: usize, labeled: bool) {
+        let start = done.load(Ordering::Acquire);
+        let end = start + count;
         match scenario {
             "raw-rayon" => {
                 let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
@@ -97,7 +99,7 @@ async fn main() {
                         }
                         // Hold the runtime alive until the wave drains so
                         // scenario teardown is comparable.
-                        while done.load(Ordering::Acquire) < TOTAL_POST() {
+                        while done.load(Ordering::Acquire) < end {
                             tokio::time::sleep(std::time::Duration::from_millis(2)).await;
                         }
                         let _ = runtime.runtime_state();
@@ -133,6 +135,3 @@ async fn main() {
     );
 }
 
-fn TOTAL_POST() -> usize {
-    2 * TASKS
-}
