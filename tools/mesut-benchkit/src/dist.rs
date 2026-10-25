@@ -1,7 +1,7 @@
 //! Workload distributions: service times, priorities, deadlines, work kinds.
 
 use crate::rng::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 fn default_one() -> f64 {
@@ -42,7 +42,7 @@ impl Class {
 /// Service-time distribution. Sampling returns the duration plus the label
 /// class the task should carry (component name where present, size class
 /// otherwise) so per-class latency and starvation are measurable.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ServiceDist {
     /// Fixed duration.
@@ -62,7 +62,7 @@ pub enum ServiceDist {
     Spiky { base_us: f64, spike_us: f64, period_s: f64, spike_fraction: f64 },
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MixtureComponent {
     pub weight: f64,
     pub label: String,
@@ -110,7 +110,7 @@ fn duration_us(us: f64) -> Duration {
 }
 
 /// Priority mixture: weights over the four priority levels.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PriorityDist {
     #[serde(default = "default_one")]
     pub low: f64,
@@ -141,19 +141,13 @@ impl PriorityDist {
 }
 
 /// Deadline (end-to-end SLA) distribution over submitted tasks.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DeadlineDist {
     #[default]
     None,
     Fixed { sla_ms: f64 },
     Uniform { min_ms: f64, max_ms: f64 },
-}
-
-impl Default for DeadlineDist {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl DeadlineDist {
@@ -171,7 +165,7 @@ impl DeadlineDist {
 /// Work-kind mixture. `compute` burns CPU, `io` awaits a timer future,
 /// `blocking` parks a worker thread — all representing the same requested
 /// service time through the executor path that kind routes to.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkKindDist {
     #[serde(default = "default_one")]
     pub compute: f64,

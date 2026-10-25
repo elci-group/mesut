@@ -78,7 +78,7 @@ struct Shared {
     submitted_measured: AtomicUsize,
     rejected: AtomicUsize,
     handles: Mutex<Vec<tokio::task::JoinHandle<()>>>,
-    monitor_log: Mutex<Vec<Sample>>,
+    monitor_log: Arc<Mutex<Vec<Sample>>>,
 }
 
 fn priority_name(p: mesut_core::Priority) -> &'static str {
@@ -252,7 +252,7 @@ pub(crate) async fn run_with_runtime(
         submitted_measured: AtomicUsize::new(0),
         rejected: AtomicUsize::new(0),
         handles: Mutex::new(Vec::new()),
-        monitor_log: Mutex::new(Vec::new()),
+        monitor_log: Arc::new(Mutex::new(Vec::new())),
     });
 
     let warmup = Duration::from_secs_f64(config.warmup_duration);

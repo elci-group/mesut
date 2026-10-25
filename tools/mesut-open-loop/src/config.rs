@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SchedulerMode {
     Fifo,
@@ -160,12 +160,6 @@ impl RunConfig {
     /// phase rates; bursty scales the inner rate.
     pub fn scale_arrival_rate(&mut self, factor: f64) {
         self.arrival.arrival_rate *= factor;
-        match &mut self.arrival.process {
-            mesut_benchkit::ArrivalProcess::Fixed { rate } | {
-                let _ = rate;
-            } => {}
-            _ => {}
-        }
         scale_process(&mut self.arrival.process, factor);
     }
 }

@@ -195,7 +195,7 @@ pub fn cmd_matrix(argv: &[String]) -> i32 {
     for (m_index, multiplier) in args.multipliers.iter().enumerate() {
         for mode in &args.modes {
             cells.push((*multiplier, *mode, Vec::with_capacity(args.reps)));
-            let cell = cells.last_mut().unwrap().2.as_mut_slice();
+            let cell = &mut cells.last_mut().unwrap().2;
             for rep in 1..=args.reps {
                 let mut config = base.clone();
                 config.scale_arrival_rate(*multiplier);

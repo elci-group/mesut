@@ -3,11 +3,11 @@
 //! workload rather than of the harness.
 
 use crate::rng::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// How arrival times are generated. All rates are arrivals per second.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArrivalProcess {
     /// Deterministic interval `1/rate`.
