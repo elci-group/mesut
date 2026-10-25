@@ -14,7 +14,7 @@ fn rss_bytes() -> u64 {
     line.split_whitespace().nth(1).unwrap().parse::<u64>().unwrap() * 1024
 }
 
-const TASKS: usize = 30_000;
+const TASKS: usize = std::env::var("LEAKDIFF_TASKS").ok().and_then(|v| v.parse().ok()).unwrap_or(30_000);
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
