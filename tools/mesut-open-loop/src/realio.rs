@@ -128,17 +128,29 @@ async fn fixtures() -> Result<Fixtures, String> {
                 }
                 match mode_byte[0] {
                     // 1: echo; 2: delay 5ms then echo; 3: delay 0..10ms; 4: stream 1MiB.
-                    1 => {
-                        let _ = tokio::io::copy(&mut reader, &mut writer).await;
-                    }
-                    2 => {
-                        tokio::time::sleep(Duration::from_millis(5)).await;
-                        let _ = tokio::io::copy(&mut reader, &mut writer).await;
-                    }
-                    3 => {
-                        tokio::time::sleep(Duration::from_millis((rand_jitter() % 10) as u64))
+                    1 | 2 | 3 => {
+                        if mode_byte[0] == 2 {
+                            tokio::time::sleep(Duration::from_millis(5)).await;
+                        } else if mode_byte[0] == 3 {
+                            tokio::time::sleep(Duration::from_millis(
+                                (rand_jitter() % 10) as u64,
+                            ))
                             .await;
-                        let _ = tokio::io::copy(&mut reader, &mut writer).await;
+                        }
+                        // Echo exactly the 2-byte payload the client expects.
+                        let mut payload = [0u8; 2];
+                        if tokio::io::AsyncReadExt::read_exact(&mut reader, &mut payload)
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                        if tokio::io::AsyncWriteExt::write_all(&mut writer, &payload)
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
                     }
                     _ => {
                         let chunk = vec![0u8; 64 * 1024];
@@ -202,8 +214,14 @@ where
                 let _ = timing_for_cb;
             });
         runtime.submit(work).await.unwrap();
-        // Small in-flight window keeps the queue realistic for latency work.
+        // Small in-flight window keeps the queue realistic for latency work;
+        // bounded so a hung operation fails the run instead of hanging it.
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
         while completed.load(Ordering::Acquire) < index {
+            if std::time::Instant::now() > deadline {
+                let _ = std::fs::remove_dir_all(&std::env::temp_dir().join("mesut-realio-stuck"));
+                return latencies_lock(latencies, completed);
+            }
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
     }
@@ -338,11 +356,12 @@ async fn one_scenario(
                     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
                         .await
                         .map_err(|e| mesut::TaskError::ExecutionFailed(e.to_string()))?;
+                    // Server consumes the mode byte and echoes the payload.
                     stream
                         .write_all(&[mode_byte, 0x42, 0x42])
                         .await
                         .map_err(|e| mesut::TaskError::ExecutionFailed(e.to_string()))?;
-                    let mut buf = [0u8; 3];
+                    let mut buf = [0u8; 2];
                     stream
                         .read_exact(&mut buf)
                         .await
@@ -415,7 +434,7 @@ async fn one_scenario(
                                         mesut::TaskError::ExecutionFailed(e.to_string())
                                     })?;
                             stream
-                                .write_all(&[1, 0])
+                                .write_all(&[1, 0, 0])
                                 .await
                                 .map_err(|e| mesut::TaskError::ExecutionFailed(e.to_string()))?;
                             let mut buf = [0u8; 2];
