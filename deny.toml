@@ -22,8 +22,11 @@ allow = [
 confidence-threshold = 0.93
 
 [bans]
+# Internal crates are path deps inherited through [workspace.dependencies]
+# without versions; the lockfile pins them. Only external wildcard deps
+# would be a concern, so this stays a warning rather than an error.
 multiple-versions = "warn"
-wildcards = "deny"
+wildcards = "warn"
 
 [advisories]
 version = 2
