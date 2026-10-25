@@ -180,6 +180,7 @@ fn scale_process(process: &mut mesut_benchkit::ArrivalProcess, factor: f64) {
 /// Standard workload presets from WS1. Returned as JSON so they round-trip
 /// through the same config file format as bespoke runs.
 pub fn preset(name: &str) -> Result<serde_json::Value, String> {
+    #[allow(unused_variables)]
     let poisson = |rate: f64| serde_json::json!({ "kind": "poisson", "rate": rate });
     let v: serde_json::Value = match name {
         "homogeneous-short" => serde_json::json!({
