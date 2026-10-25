@@ -106,7 +106,7 @@ pub struct RunConfig {
     #[serde(default)]
     pub cancellation_probe: Option<CancellationProbe>,
     #[serde(default = "default_monitor")]
-    pub monitor_interval: f64,
+    pub monitor_interval_ms: f64,
     /// Tasks with queue wait above this are counted as starvation incidents.
     #[serde(default = "default_starvation_ms")]
     pub starvation_threshold: f64,
@@ -184,13 +184,13 @@ pub fn preset(name: &str) -> Result<serde_json::Value, String> {
     let v: serde_json::Value = match name {
         "homogeneous-short" => serde_json::json!({
             "name": "homogeneous-short",
-            "arrival": { "kind": "poisson", "arrival_rate": 300.0, "rate": 300.0 },
+            "kind": "poisson", "arrival_rate": 300.0, "rate": 300.0,
             "service_distribution": { "kind": "constant", "mean_us": 3000.0 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "bimodal" => serde_json::json!({
             "name": "bimodal",
-            "arrival": { "kind": "poisson", "arrival_rate": 250.0, "rate": 250.0 },
+            "kind": "poisson", "arrival_rate": 250.0, "rate": 250.0,
             "service_distribution": { "kind": "mixture", "components": [
                 { "weight": 80.0, "label": "short", "kind": "constant", "mean_us": 5000.0 },
                 { "weight": 20.0, "label": "long", "kind": "constant", "mean_us": 40000.0 },
@@ -199,19 +199,19 @@ pub fn preset(name: &str) -> Result<serde_json::Value, String> {
         }),
         "heavy-tail" => serde_json::json!({
             "name": "heavy-tail",
-            "arrival": { "kind": "poisson", "arrival_rate": 200.0, "rate": 200.0 },
+            "kind": "poisson", "arrival_rate": 200.0, "rate": 200.0,
             "service_distribution": { "kind": "pareto", "xm_us": 500.0, "alpha": 1.4 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "lognormal" => serde_json::json!({
             "name": "lognormal",
-            "arrival": { "kind": "poisson", "arrival_rate": 200.0, "rate": 200.0 },
+            "kind": "poisson", "arrival_rate": 200.0, "rate": 200.0,
             "service_distribution": { "kind": "lognormal", "mean_us": 5000.0, "sigma": 1.2 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "adversarial-95-4-1" => serde_json::json!({
             "name": "adversarial-95-4-1",
-            "arrival": { "kind": "poisson", "arrival_rate": 400.0, "rate": 400.0 },
+            "kind": "poisson", "arrival_rate": 400.0, "rate": 400.0,
             "service_distribution": { "kind": "mixture", "components": [
                 { "weight": 95.0, "label": "short", "kind": "constant", "mean_us": 2000.0 },
                 { "weight": 4.0, "label": "medium", "kind": "constant", "mean_us": 20000.0 },
@@ -221,20 +221,20 @@ pub fn preset(name: &str) -> Result<serde_json::Value, String> {
         }),
         "spiky" => serde_json::json!({
             "name": "spiky",
-            "arrival": { "kind": "fixed", "arrival_rate": 200.0, "rate": 200.0 },
+            "kind": "fixed", "arrival_rate": 200.0, "rate": 200.0,
             "service_distribution": { "kind": "spiky", "base_us": 2000.0, "spike_us": 50000.0, "period_s": 2.0, "spike_fraction": 0.1 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "priority-mix" => serde_json::json!({
             "name": "priority-mix",
-            "arrival": { "kind": "poisson", "arrival_rate": 250.0, "rate": 250.0 },
+            "kind": "poisson", "arrival_rate": 250.0, "rate": 250.0,
             "service_distribution": { "kind": "lognormal", "mean_us": 5000.0, "sigma": 1.0 },
             "priority_distribution": { "low": 2.0, "normal": 7.0, "high": 1.0, "critical": 0.1 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "deadline-heavy" => serde_json::json!({
             "name": "deadline-heavy",
-            "arrival": { "kind": "poisson", "arrival_rate": 200.0, "rate": 200.0 },
+            "kind": "poisson", "arrival_rate": 200.0, "rate": 200.0,
             "service_distribution": { "kind": "mixture", "components": [
                 { "weight": 75.0, "label": "short", "kind": "constant", "mean_us": 5000.0 },
                 { "weight": 25.0, "label": "long", "kind": "constant", "mean_us": 40000.0 },
@@ -244,26 +244,26 @@ pub fn preset(name: &str) -> Result<serde_json::Value, String> {
         }),
         "bursty" => serde_json::json!({
             "name": "bursty",
-            "arrival": { "kind": "bursty", "arrival_rate": 150.0, "burst_size": 60, "inner_rate": 500.0, "gap_s": 1.0 },
+            "kind": "bursty", "arrival_rate": 150.0, "burst_size": 60, "inner_rate": 500.0, "gap_s": 1.0,
             "service_distribution": { "kind": "constant", "mean_us": 3000.0 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "alternating" => serde_json::json!({
             "name": "alternating",
-            "arrival": { "kind": "alternating", "arrival_rate": 300.0, "low_rate": 50.0, "high_rate": 600.0, "phase_s": 4.0 },
+            "kind": "alternating", "arrival_rate": 300.0, "low_rate": 50.0, "high_rate": 600.0, "phase_s": 4.0,
             "service_distribution": { "kind": "constant", "mean_us": 5000.0 },
             "duration": 30.0, "warmup_duration": 5.0,
         }),
         "mixed-cpu-io" => serde_json::json!({
             "name": "mixed-cpu-io",
-            "arrival": { "kind": "poisson", "arrival_rate": 300.0, "rate": 300.0 },
+            "kind": "poisson", "arrival_rate": 300.0, "rate": 300.0,
             "service_distribution": { "kind": "lognormal", "mean_us": 5000.0, "sigma": 0.8 },
             "work_kind_distribution": { "compute": 6.0, "io": 3.0, "blocking": 1.0 },
             "duration": 20.0, "warmup_duration": 5.0,
         }),
         "steady-overload" => serde_json::json!({
             "name": "steady-overload",
-            "arrival": { "kind": "poisson", "arrival_rate": 400.0, "rate": 400.0 },
+            "kind": "poisson", "arrival_rate": 400.0, "rate": 400.0,
             "service_distribution": { "kind": "constant", "mean_us": 5000.0 },
             "duration": 30.0, "warmup_duration": 5.0,
             "backpressure_mode": "reject",
@@ -275,7 +275,7 @@ pub fn preset(name: &str) -> Result<serde_json::Value, String> {
                 let rate: f64 = rest.parse().map_err(|_| format!("bad rate {rest}"))?;
                 return Ok(serde_json::json!({
                     "name": format!("poisson-{rate}"),
-                    "arrival": poisson(rate),
+                    "kind": "poisson", "rate": rate, "arrival_rate": rate,
                     "service_distribution": { "kind": "constant", "mean_us": 5000.0 },
                     "duration": 20.0, "warmup_duration": 5.0,
                 }));
@@ -314,7 +314,7 @@ fn with_defaults(mut v: serde_json::Value) -> serde_json::Value {
         .entry("cooldown_duration")
         .or_insert(serde_json::json!(5.0));
     object
-        .entry("monitor_interval")
+        .entry("monitor_interval_ms")
         .or_insert(serde_json::json!(100.0));
     v
 }

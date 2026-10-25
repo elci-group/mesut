@@ -267,7 +267,8 @@ pub(crate) async fn run_with_runtime(
     // go through Shared so aborting loses nothing.
     let monitor_runtime = runtime.clone();
     let monitor_log = shared.monitor_log.clone();
-    let monitor_interval = Duration::from_secs_f64(config.monitor_interval.max(0.01));
+    let monitor_interval =
+        Duration::from_secs_f64((config.monitor_interval_ms / 1e3).max(0.005));
     let monitor = tokio::spawn(async move {
         loop {
             let state = monitor_runtime.runtime_state();
@@ -547,7 +548,8 @@ fn summarise(
     let sla_jobs: Vec<&TaskRecord> =
         completed.iter().copied().filter(|r| r.sla_ms.is_some()).collect();
     let deadline_misses = sla_jobs.iter().filter(|r| r.deadline_miss).count();
-    let throughput = completed.len() as f64 / config.duration.max(1e-9);
+    let measured_window_s = (config.duration - config.warmup_duration).max(1e-9);
+    let throughput = completed.len() as f64 / measured_window_s;
     let arrival_rate = config.arrival.arrival_rate;
     let mean_execution_ms = if executions.is_empty() {
         0.0
@@ -570,6 +572,7 @@ fn summarise(
         "lambda_over_mu": if capacity_per_sec > 0.0 { json!(arrival_rate / capacity_per_sec) } else { Value::Null },
         "duration_s": config.duration,
         "warmup_s": config.warmup_duration,
+        "measured_window_s": measured_window_s,
         "cooldown_s": config.cooldown_duration,
         "aging_ms": config.adaptive_aging,
         "starvation_threshold_ms": config.starvation_threshold,
