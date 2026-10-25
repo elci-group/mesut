@@ -5,6 +5,8 @@
 #[derive(Clone)]
 pub struct Rng {
     state: [u64; 4],
+    /// Second variate from a pending Box-Muller pair.
+    cached_normal: Option<f64>,
 }
 
 fn splitmix64(x: &mut u64) -> u64 {
@@ -20,6 +22,7 @@ impl Rng {
         let mut sm = seed;
         Self {
             state: [splitmix64(&mut sm), splitmix64(&mut sm), splitmix64(&mut sm), splitmix64(&mut sm)],
+            cached_normal: None,
         }
     }
 
@@ -54,22 +57,20 @@ impl Rng {
         -self.uniform().max(1e-12).ln() / rate
     }
 
-    /// Normal via Box-Muller (polar form), caching the second variate.
+    /// Normal via Box-Muller, caching the second variate of each pair.
     pub fn normal(&mut self, mean: f64, std: f64) -> f64 {
-        self.cached.take().map_or_else(
-            || {
+        let z = match self.cached_normal.take() {
+            Some(z) => z,
+            None => {
                 let (u, v) = (self.uniform().max(1e-12), self.uniform());
                 let mag = (-2.0 * u.ln()).sqrt();
                 let z0 = mag * (std::f64::consts::TAU * v).cos();
-                let z1 = mag * (std::f64::consts::TAU * v).sin();
-                self.cached = Some(z1);
-                mean + std * z0
-            },
-            |z| {
-                self.cached = None;
-                mean + std * z
-            },
-        )
+                self.cached_normal =
+                    Some(mag * (std::f64::consts::TAU * v).sin());
+                z0
+            }
+        };
+        mean + std * z
     }
 
     /// Lognormal whose *mean* is `mean` with shape `sigma`. Parameterising by
@@ -97,16 +98,55 @@ impl Rng {
         }
         weights.len() - 1
     }
-
-    cached_field!();
 }
 
-// A one-slot cache for the second Box-Muller variate.
-macro_rules! cached_field {
-    () => {};
-}
-use cached_field;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Rng {
-    fn __seed_helper(&mut self) {}
+    #[test]
+    fn same_seed_same_sequence() {
+        let mut a = Rng::new(42);
+        let mut b = Rng::new(42);
+        for _ in 0..1000 {
+            assert_eq!(a.next_u64(), b.next_u64());
+        }
+    }
+
+    #[test]
+    fn different_seeds_diverge() {
+        let mut a = Rng::new(1);
+        let mut b = Rng::new(2);
+        assert_ne!(a.next_u64(), b.next_u64());
+    }
+
+    #[test]
+    fn uniform_stays_in_range() {
+        let mut rng = Rng::new(7);
+        for _ in 0..10_000 {
+            let x = rng.uniform();
+            assert!((0.0..1.0).contains(&x));
+        }
+    }
+
+    #[test]
+    fn lognormal_mean_is_near_target() {
+        let mut rng = Rng::new(9);
+        let mean: f64 =
+            (0..50_000).map(|_| rng.lognormal(100.0, 1.5)).sum::<f64>() / 50_000.0;
+        assert!((mean - 100.0).abs() / 100.0 < 0.1, "mean {mean}");
+    }
+
+    #[test]
+    fn pareto_heavy_tail_beats_lognormal_tail() {
+        let mut rng = Rng::new(11);
+        let p999 = |samples: Vec<f64>| {
+            let mut s = samples;
+            s.sort_by(f64::total_cmp);
+            s[(s.len() as f64 * 0.999) as usize]
+        };
+        let logn = p999((0..20_000).map(|_| rng.lognormal(100.0, 1.0)).collect());
+        let par = p999((0..20_000).map(|_| rng.pareto(20.0, 1.2)).collect());
+        assert!(par > logn, "pareto p999 {par} should exceed lognormal {logn}");
+    }
 }
