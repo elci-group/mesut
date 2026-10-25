@@ -216,8 +216,9 @@ where
         runtime.submit(work).await.unwrap();
         // Small in-flight window keeps the queue realistic for latency work;
         // bounded so a hung operation fails the run instead of hanging it.
+        let completed_wait = completed.clone();
         let deadline = std::time::Instant::now() + Duration::from_secs(60);
-        while completed.load(Ordering::Acquire) < index {
+        while completed_wait.load(Ordering::Acquire) < index {
             if std::time::Instant::now() > deadline {
                 // Hung operation: abort the scenario with what completed.
                 return latencies.lock().unwrap().clone();
