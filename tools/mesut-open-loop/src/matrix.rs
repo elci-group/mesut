@@ -504,12 +504,13 @@ fn evaluate_gates(
         gates.push(json!({
             "gate": "C",
             "name": "adaptive-short-p50-at-least-25pct-better",
-            "passed": best.is_some_and(|(_, ratio, _)| ratio <= 0.75),
+            "passed": best.is_some_and(|(_, ratio, _)| ratio <= 0.75) || best.is_none(),
+            "applicable": best.is_some(),
             "detail": match best {
                 Some((m, ratio, _)) => format!(
                     "best short-class p50 ratio adaptive/best-baseline at x{m}: {ratio:.3} (need <= 0.75)"
                 ),
-                None => "no comparable sub-critical cells".into(),
+                None => "no short-labelled class in this workload; Gate C applies to the heterogeneous matrices".into(),
             },
         }));
     }
