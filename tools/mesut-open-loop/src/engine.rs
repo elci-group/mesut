@@ -9,7 +9,7 @@
 //! `QueueFull`-terminated but already admitted) are distinguished by
 //! submission success.
 
-use crate::config::{RunConfig, SchedulerMode};
+use crate::config::RunConfig;
 use mesut::prelude::*;
 use mesut_benchkit::env as benv;
 use mesut_benchkit::workload::{burn, burn_cooperative, cancel_flag};
@@ -260,7 +260,7 @@ pub(crate) async fn run_with_runtime(
     });
 
     let warmup = Duration::from_secs_f64(config.warmup_duration);
-    let window = Duration::from_secs_f64(config.duration);
+    let _window = Duration::from_secs_f64(config.duration);
     let measured_start = t0 + warmup;
 
     // Monitor task: samples runtime and process state until aborted. Samples
