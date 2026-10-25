@@ -4,3 +4,4 @@
 
 # Local agent history
 .azusa/
+tools/*/target/
