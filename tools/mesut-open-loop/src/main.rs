@@ -11,6 +11,9 @@
 
 mod config;
 mod engine;
+mod matrix;
+mod overhead;
+mod soak;
 
 use config::{RunConfig, SchedulerMode};
 use engine::RunOutput;
@@ -184,16 +187,6 @@ fn report_run(config: &RunConfig, run: &RunOutput, quiet: bool) {
         return;
     }
     let s = &run.summary;
-    let fmt = |v: &serde_json::Value, field: &str| -> f64 {
-        s[field].as_f64().unwrap_or(f64::NAN)
-            .then_some(())
-            .map(|_| s[field].as_f64().unwrap())
-            .unwrap_or(f64::NAN)
-            .then_some(())
-            .map(|_| s[field].as_f64().unwrap())
-            .unwrap_or(f64::NAN)
-    };
-    let _ = fmt;
     let get = |path: &[&str]| -> f64 {
         let mut cur = s;
         for key in path {
@@ -242,14 +235,4 @@ fn emit(raw: &serde_json::Value, out: Option<&std::path::Path>) -> i32 {
             0
         }
     }
-}
-
-pub mod matrix {
-    include!("matrix.rs");
-}
-pub mod overhead {
-    include!("overhead.rs");
-}
-pub mod soak {
-    include!("soak.rs");
 }
