@@ -119,11 +119,10 @@ fn extract(summary: &Value) -> RepMetrics {
         lambda_over_mu: f(&["lambda_over_mu"]),
         p50_short_total_ms: f(&["per_label", "short", "total_ms", "p50"]),
         p99_long_queue_ms: f(&["per_label", "long", "queue_ms", "p99"]),
-        long_completion_rate: {
-            let long = summary.pointer("/per_label/long/completed").as_f64().unwrap_or(0.0);
-            let submitted = f(&["submitted_measured"]) * 0.01;
-            if submitted > 0.0 { long / submitted } else { f64::NAN }
-        },
+        long_completion_rate: summary
+            .pointer("/per_label/long/completion_rate")
+            .and_then(Value::as_f64)
+            .unwrap_or(f64::NAN),
     }
 }
 
@@ -301,7 +300,7 @@ pub fn cmd_matrix(argv: &[String]) -> i32 {
     }
 
     // Gate evaluation on this workload's aggregates.
-    let gates = evaluate_gates(&name, &args, &cells);
+    let gates = evaluate_gates(&name, &base, &args, &cells);
     let gate_passed = gates.iter().all(|g| g["passed"].as_bool().unwrap_or(false));
 
     eprintln!("\n--- matrix gates ({name}) ---");
@@ -358,6 +357,7 @@ fn median_metric(
 
 fn evaluate_gates(
     workload: &str,
+    base: &RunConfig,
     args: &MatrixArgs,
     cells: &[(f64, SchedulerMode, Vec<RepMetrics>)],
 ) -> Vec<Value> {
@@ -441,26 +441,16 @@ fn evaluate_gates(
             .fold(None, |acc: Option<(f64, f64)>, (m, v)| {
                 acc.map_or(Some((m, v)), |(bm, bv)| if v > bv { Some((m, v)) } else { acc })
             });
-        if let Some((multiplier, p99_long)) = long_p99 {
-            let aging = base_aging_ms(&cells, args);
-            // Bound: aging threshold + drain quantum of short work per
-            // worker + 150ms slack (matches the batch-gate derivation,
-            // adapted to sustained arrivals with p99 short service).
-            let short_service = median_metric(cells, multiplier, SchedulerMode::Adaptive, |r| {
-                r.p50_short_total_ms
-            })
-            .unwrap_or(5.0);
-            let workers = 8.0;
-            let bound = aging + 2.0 * short_service * workers + 150.0;
-            gates.push(json!({
-                "gate": "B",
-                "name": "long-class-dispatched-within-aging-bound",
-                "passed": p99_long <= bound,
-                "detail": format!(
-                    "worst long-class p99 queue {p99_long:.1}ms at x{multiplier} vs bound {bound:.1}ms (aging {aging}ms)"
-                ),
-            }));
-        }
+        gates.push(json!({
+            "gate": "B",
+            "name": "long-class-dispatched-within-aging-bound",
+            "passed": p99_long <= bound,
+            "detail": format!(
+                "worst long-class p99 queue {p99_long:.1}ms at x{multiplier} vs bound {bound:.1}ms (aging {aging}ms)"
+            ),
+        }));
+    }
+
     }
 
     // Gate C — adaptive utility: >= 25% improvement (p50 short-class or
