@@ -183,7 +183,7 @@ where
     for index in 0..ops {
         let latencies = latencies.clone();
         let completed = completed.clone();
-        let completed_wait = completed.clone();
+        let completed_for_cb = completed.clone();
         let timing = mesut::TaskTiming::new().shared();
         let timing_for_cb = timing.clone();
         let submitted = std::time::Instant::now();
@@ -198,15 +198,14 @@ where
                         submitted.elapsed().as_secs_f64() * 1e6,
                     );
                 }
-                completed.fetch_add(1, Ordering::AcqRel);
+                completed_for_cb.fetch_add(1, Ordering::AcqRel);
                 let _ = timing_for_cb;
             });
         runtime.submit(work).await.unwrap();
         // Small in-flight window keeps the queue realistic for latency work.
-        while completed_wait.load(Ordering::Acquire) < index {
+        while completed.load(Ordering::Acquire) < index {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
-        let _ = &completed_wait;
     }
     runtime.join().await.unwrap();
     Arc::try_unwrap(latencies).unwrap().into_inner().unwrap()
@@ -308,6 +307,7 @@ async fn one_scenario(
                             Ok(vec![])
                         }),
                 };
+                let completed_for_cb = completed.clone();
                 let work = work.on_complete(move |result| {
                     if result.is_ok() {
                         latencies
@@ -315,11 +315,10 @@ async fn one_scenario(
                             .unwrap()
                             .push(submitted.elapsed().as_secs_f64() * 1e6);
                     }
-                    completed.fetch_add(1, Ordering::AcqRel);
+                    completed_for_cb.fetch_add(1, Ordering::AcqRel);
                 });
                 runtime.submit(work).await.unwrap();
-                let completed_wait = completed.clone();
-                while completed_wait.load(Ordering::Acquire) < index + 1 {
+                while completed.load(Ordering::Acquire) < index + 1 {
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
             }
