@@ -35,6 +35,8 @@ pub enum Outcome {
 #[derive(Clone, Debug, Serialize)]
 pub struct TaskRecord {
     pub arrival_index: u64,
+    /// Arrival-schedule offset from run start, seconds.
+    pub submitted_offset_s: f64,
     pub warmup: bool,
     pub label: String,
     pub priority: &'static str,
@@ -64,6 +66,7 @@ pub struct Sample {
 #[derive(Clone, Debug)]
 struct ArrivalMeta {
     arrival_index: u64,
+    submitted_offset_s: f64,
     warmup: bool,
     label: String,
     priority: &'static str,
@@ -180,6 +183,7 @@ fn spawn_task(
                 shared.rejected.fetch_add(1, Ordering::AcqRel);
                 shared.records.lock().unwrap().push(TaskRecord {
                     arrival_index: meta.arrival_index,
+                    submitted_offset_s: meta.submitted_offset_s,
                     warmup: meta.warmup,
                     label: meta.label,
                     priority: meta.priority,
@@ -209,6 +213,7 @@ fn spawn_task(
                     .is_some_and(|sla| outcome == Outcome::Completed && total.as_secs_f64() * 1e3 > sla);
                 shared.records.lock().unwrap().push(TaskRecord {
                     arrival_index: meta.arrival_index,
+                    submitted_offset_s: meta.submitted_offset_s,
                     warmup: meta.warmup,
                     label: meta.label,
                     priority: meta.priority,
@@ -397,6 +402,7 @@ pub(crate) async fn run_with_runtime(
                 shared.clone(),
                 ArrivalMeta {
                     arrival_index,
+                    submitted_offset_s: next_t,
                     warmup: false,
                     label,
                     priority: priority_name(priority),
