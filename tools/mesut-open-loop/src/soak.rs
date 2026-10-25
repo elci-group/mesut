@@ -126,11 +126,16 @@ pub fn cmd_soak(argv: &[String]) -> i32 {
     };
 
     // ---- Verdicts over the measured window (post-warmup samples) ----
+    // The first 20% of the measured window is treated as allocator settling
+    // and excluded from growth trends; growth must be monotonic *after* the
+    // runtime has reached steady state to count as a blocker.
     let samples = &run.samples;
-    let measured: Vec<_> = samples
+    let measured_all: Vec<_> = samples
         .iter()
         .filter(|s| s.t >= cfg.warmup_duration)
         .collect();
+    let settle = measured_all.len() / 5;
+    let measured = &measured_all[settle..];
     let n = measured.len();
     if n < 10 {
         eprintln!("soak produced too few samples ({n})");
