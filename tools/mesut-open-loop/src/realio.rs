@@ -183,6 +183,7 @@ where
     for index in 0..ops {
         let latencies = latencies.clone();
         let completed = completed.clone();
+        let completed_wait = completed.clone();
         let timing = mesut::TaskTiming::new().shared();
         let timing_for_cb = timing.clone();
         let submitted = std::time::Instant::now();
@@ -202,9 +203,10 @@ where
             });
         runtime.submit(work).await.unwrap();
         // Small in-flight window keeps the queue realistic for latency work.
-        while completed.load(Ordering::Acquire) < index {
+        while completed_wait.load(Ordering::Acquire) < index {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
+        let _ = &completed_wait;
     }
     runtime.join().await.unwrap();
     Arc::try_unwrap(latencies).unwrap().into_inner().unwrap()
@@ -316,7 +318,8 @@ async fn one_scenario(
                     completed.fetch_add(1, Ordering::AcqRel);
                 });
                 runtime.submit(work).await.unwrap();
-                while completed.load(Ordering::Acquire) < index + 1 {
+                let completed_wait = completed.clone();
+                while completed_wait.load(Ordering::Acquire) < index + 1 {
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
             }
