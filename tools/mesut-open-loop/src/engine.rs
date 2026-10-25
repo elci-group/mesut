@@ -429,15 +429,14 @@ pub(crate) async fn run_with_runtime(
     }
 
     let records: Vec<TaskRecord> = std::mem::take(&mut *shared.records.lock().unwrap());
-    let samples: Vec<Sample> = match monitor.now_or_never() {
-        _ => Vec::new(), // aborted; replaced below with a completed local log
-    };
-    let _ = samples;
+    let samples: Vec<Sample> = std::mem::take(&mut *shared.monitor_log.lock().unwrap());
 
     let summary = summarise(
         config,
         &records,
         undrained,
+        shared.submitted_measured.load(Ordering::Acquire),
+        shared.rejected.load(Ordering::Acquire),
         &state_at_end,
         drain_end.duration_since(measured_start),
         probe_done.lock().unwrap().clone(),
@@ -445,7 +444,7 @@ pub(crate) async fn run_with_runtime(
         t0,
         shutdown_result.is_ok(),
     );
-    Ok(RunOutput { summary, records, samples: Vec::new() })
+    Ok(RunOutput { summary, records, samples })
 }
 
 fn percentile(mut values: Vec<f64>, p: f64) -> Option<f64> {
@@ -477,6 +476,8 @@ fn summarise(
     config: &RunConfig,
     records: &[TaskRecord],
     undrained: usize,
+    submitted_measured: usize,
+    rejected: usize,
     state_at_end: &mesut::RuntimeState,
     measured_wall: Duration,
     cancellation_ms: Vec<f64>,
@@ -566,7 +567,8 @@ fn summarise(
         "max_in_flight": config.max_in_flight,
         "queue_limit": config.queue_limit,
         "backpressure_mode": config.backpressure_mode,
-        "submitted_measured": shared_count(config, records),
+        "submitted_measured": submitted_measured,
+        "submission_rejected": rejected,
         "completed": completed.len(),
         "outcomes": {
             "completed": outcome_count(Outcome::Completed),
@@ -606,9 +608,4 @@ fn summarise(
                 .map(|s| s.busy_ms).sum::<u64>(),
         },
     })
-}
-
-fn shared_count(_config: &RunConfig, _records: &[TaskRecord]) -> usize {
-    // Superseded by outcomes; kept for schema stability.
-    0
 }
