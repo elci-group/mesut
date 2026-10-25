@@ -5,7 +5,7 @@ use crate::config::{self, RunConfig, SchedulerMode};
 use crate::engine;
 use mesut_benchkit::stats::{self, Describe};
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 struct MatrixArgs {
     preset: Option<String>,
@@ -502,13 +502,3 @@ fn evaluate_gates(
 
     gates
 }
-
-fn base_aging_ms(_cells: &[(f64, SchedulerMode, Vec<RepMetrics>)], args: &MatrixArgs) -> f64 {
-    // The preset fixes aging at 250ms; configs may override via the base
-    // file, but cells do not carry it. Keep in sync with config defaults.
-    args.reps.iter().count();
-    250.0
-}
-
-#[allow(dead_code)]
-fn unused(_: &Path) {}
