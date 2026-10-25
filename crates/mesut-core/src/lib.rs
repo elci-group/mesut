@@ -7,10 +7,12 @@ use uuid::Uuid;
 
 pub use identifier::*;
 pub use lifecycle::*;
+pub use timing::{LatencyPhases, TaskTiming, thread_cpu_ns};
 pub use work::{ResourceHint, RoutingHint, Work};
 
 mod identifier;
 mod lifecycle;
+mod timing;
 mod work;
 
 /// Unique stable task identifier.
@@ -142,6 +144,9 @@ pub enum TaskError {
 
     #[error("executor is unavailable")]
     ExecutorUnavailable,
+
+    #[error("runtime is shutting down")]
+    Shutdown,
 
     #[error("internal error: {0}")]
     Internal(String),

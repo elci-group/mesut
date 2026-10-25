@@ -1,3 +1,6 @@
 /target/
 /.toon
 /.kaptaind/
+
+# Local agent history
+.azusa/

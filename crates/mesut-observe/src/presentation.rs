@@ -100,13 +100,22 @@ impl AssistObserver {
                 ),
                 true,
             ),
-            TaskEventType::Completed { duration_ms } => (
-                format!(
-                    "{}  finished in {duration_ms}ms{suffix}",
-                    self.paint(GOLD, "✓")
-                ),
-                true,
-            ),
+            TaskEventType::Completed {
+                duration_ms,
+                phases,
+            } => {
+                let execution = phases
+                    .map(|p| p.execution_us)
+                    .map(|us| format!(" · exec {}ms", us / 1000))
+                    .unwrap_or_default();
+                (
+                    format!(
+                        "{}  finished in {duration_ms}ms{execution}{suffix}",
+                        self.paint(GOLD, "✓")
+                    ),
+                    true,
+                )
+            }
             TaskEventType::Failed { error } => (
                 format!(
                     "{}  move broke down · {error}{suffix}",

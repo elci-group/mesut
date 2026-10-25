@@ -66,6 +66,9 @@ pub struct Work {
     /// Identifies a recurring workload across submissions for adaptive
     /// scheduling. Unlabeled work is scheduled without duration history.
     pub label: Option<String>,
+    /// Phase-timing handle shared with the runtime coordination layer.
+    /// Attached automatically at admission when not set beforehand.
+    timing: Option<Arc<crate::TaskTiming>>,
     job: Option<Job>,
     completion: Vec<Completion>,
     started: Option<Box<dyn FnOnce() + Send>>,
@@ -90,6 +93,7 @@ impl Work {
             cancellation: CancellationToken::new(),
             timeout: None,
             label: None,
+            timing: None,
             job: None,
             completion: Vec::new(),
             started: None,
@@ -109,6 +113,19 @@ impl Work {
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
+    }
+
+    /// Attach the phase-timing handle the runtime coordination layer reads
+    /// latency phases from. Callers that pre-attach a timing can read the
+    /// final breakdown after completion; otherwise admission creates one.
+    pub fn with_timing(mut self, timing: Arc<crate::TaskTiming>) -> Self {
+        self.timing = Some(timing);
+        self
+    }
+
+    /// The attached phase-timing handle, if any.
+    pub fn timing(&self) -> Option<Arc<crate::TaskTiming>> {
+        self.timing.clone()
     }
 
     pub fn with_scope(mut self, scope: &crate::TaskScope) -> Self {
@@ -193,15 +210,29 @@ impl Work {
         } else {
             match self.job.take() {
                 Some(Job::Sync(job)) => {
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let cpu_start = crate::thread_cpu_ns();
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         job(self.cancellation.clone())
                     }))
-                    .unwrap_or_else(|_| Err(TaskError::ExecutionFailed("work panicked".into())))
+                    .unwrap_or_else(|_| Err(TaskError::ExecutionFailed("work panicked".into())));
+                    let job_cpu_ns = match (cpu_start, crate::thread_cpu_ns()) {
+                        (Some(start), Some(end)) => Some(end.saturating_sub(start)),
+                        _ => None,
+                    };
+                    if let Some(timing) = &self.timing {
+                        timing.mark_job_end(job_cpu_ns);
+                    }
+                    result
                 }
                 Some(Job::Async(_)) => Err(TaskError::InvalidConfiguration(
                     "async work requires Tokio".into(),
                 )),
-                None => Ok((*self.payload).clone()),
+                None => {
+                    if let Some(timing) = &self.timing {
+                        timing.mark_job_end(None);
+                    }
+                    Ok((*self.payload).clone())
+                }
             }
         };
         let result = if self.cancellation.is_cancelled() {
@@ -229,8 +260,16 @@ impl Work {
             } else {
                 result
             };
+            // A future's thread-CPU time is not attributable: between awaits
+            // the worker runs unrelated tasks on the same thread.
+            if let Some(timing) = &self.timing {
+                timing.mark_job_end(None);
+            }
             self.notify(&result);
         } else {
+            if let Some(timing) = &self.timing {
+                timing.mark_job_end(None);
+            }
             self.notify(&Ok((*self.payload).clone()));
         }
     }
@@ -245,6 +284,9 @@ impl Work {
     }
 
     fn start(&mut self) {
+        if let Some(timing) = &self.timing {
+            timing.mark_started();
+        }
         if let Some(callback) = self.started.take() {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(callback));
         }

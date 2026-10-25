@@ -106,12 +106,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    println!("\n--- learned per-label duration (adaptive scheduling) ---");
+    println!("\n--- learned per-label service time (adaptive scheduling) ---");
     for label in ["hash-small", "hash-large"] {
         match runtime.workload_profile(label) {
             Some(profile) => println!(
-                "  {label}: samples={} mean={:?} max={:?}",
-                profile.samples, profile.mean_duration, profile.max_duration
+                "  {label}: samples={} mean_service={:?} max_service={:?}",
+                profile.samples, profile.mean_service_time, profile.max_service_time
             ),
             None => println!("  {label}: no samples"),
         }

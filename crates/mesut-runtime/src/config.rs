@@ -20,6 +20,13 @@ pub struct RuntimeConfig {
     pub backpressure_threshold: usize,
     /// Recent-sample window per label for `SchedulingMode::Adaptive`.
     pub adaptive_window: usize,
+    /// Queue-wait threshold after which `SchedulingMode::Adaptive` promotes a
+    /// candidate to FIFO order within its priority tier, bounding starvation
+    /// of long work. `None` disables aging (pure shortest-service-time-first).
+    pub adaptive_aging: Option<Duration>,
+    /// How long `MesuT::shutdown` waits for cooperative work to drain before
+    /// forcing termination. `None` waits unboundedly.
+    pub shutdown_grace: Option<Duration>,
 }
 
 impl RuntimeConfig {
@@ -35,6 +42,8 @@ impl RuntimeConfig {
             enable_animations: true,
             backpressure_threshold: 1000,
             adaptive_window: 16,
+            adaptive_aging: Some(Duration::from_millis(250)),
+            shutdown_grace: Some(Duration::from_secs(30)),
         }
     }
 
@@ -71,6 +80,20 @@ impl RuntimeConfig {
     /// Number of recent durations kept per label for `SchedulingMode::Adaptive`.
     pub fn with_adaptive_window(mut self, window: usize) -> Self {
         self.adaptive_window = window;
+        self
+    }
+
+    /// Queue-wait threshold after which `SchedulingMode::Adaptive` promotes a
+    /// candidate to FIFO order within its tier. `None` disables aging.
+    pub fn with_adaptive_aging(mut self, aging: Option<Duration>) -> Self {
+        self.adaptive_aging = aging;
+        self
+    }
+
+    /// Grace period `MesuT::shutdown` waits for cooperative work before
+    /// forcing termination. `None` waits unboundedly.
+    pub fn with_shutdown_grace(mut self, grace: Option<Duration>) -> Self {
+        self.shutdown_grace = grace;
         self
     }
 

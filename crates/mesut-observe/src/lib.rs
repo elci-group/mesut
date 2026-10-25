@@ -1,4 +1,4 @@
-use mesut_core::{TaskId, WorkKind};
+use mesut_core::{LatencyPhases, TaskId, WorkKind};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -28,7 +28,13 @@ pub enum TaskEventType {
     Routed { route: String },
     Queued { queue_depth: usize },
     Started { executor_id: String },
-    Completed { duration_ms: u128 },
+    /// `duration_ms` is the queue-inclusive submit-to-completion total;
+    /// `phases` carries the split and is `None` when the task was cancelled
+    /// or failed before it ever started executing.
+    Completed {
+        duration_ms: u128,
+        phases: Option<LatencyPhases>,
+    },
     Failed { error: String },
     Cancelled { reason: String },
 }
@@ -66,11 +72,11 @@ impl TaskEvent {
         }
     }
 
-    pub fn completed(task_id: TaskId, duration_ms: u128) -> Self {
+    pub fn completed(task_id: TaskId, duration_ms: u128, phases: Option<LatencyPhases>) -> Self {
         Self {
             timestamp: SystemTime::now(),
             task_id,
-            event_type: TaskEventType::Completed { duration_ms },
+            event_type: TaskEventType::Completed { duration_ms, phases },
         }
     }
 

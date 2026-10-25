@@ -1,7 +1,7 @@
 pub use mesut_core::TaskScope;
 pub use mesut_core::{
-    CancellationToken, ExecutionMetadata, Priority, ResourceHint, RoutingHint, TaskError,
-    TaskResult, WorkKind,
+    CancellationToken, ExecutionMetadata, LatencyPhases, Priority, ResourceHint, RoutingHint,
+    TaskError, TaskResult, TaskTiming, WorkKind,
 };
 pub use mesut_executor::{ArcExecutor, Executor, ExecutorPool};
 pub use mesut_observe::{AssistObserver, EventObserver, NoOpObserver, TaskEvent, TraceCollector};
@@ -10,7 +10,9 @@ pub use mesut_runtime::BackpressurePolicy;
 pub use mesut_runtime::{
     MesuT, Pipeline, PipelineBuilder, PipelineOutputs, PipelineStage, RuntimeConfig,
 };
-pub use mesut_scheduler::{ExecutorStats, RuntimeState, SchedulingMode, WorkloadProfile};
+pub use mesut_scheduler::{
+    ExecutorStats, RuntimeState, SchedulingMode, ShutdownState, WorkloadProfile,
+};
 
 pub use mesut_blocking::BlockingExecutor;
 pub use mesut_rayon::RayonExecutor;

@@ -2,7 +2,9 @@ use mesut_core::{Route, TaskError, TaskId, TaskResult, TaskScope, Work};
 use mesut_executor::ArcExecutor;
 use mesut_observe::{AssistObserver, EventObserver, NoOpObserver, TaskEvent};
 use mesut_router::WorkRouter;
+use mesut_scheduler::ShutdownState;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 pub use config::*;
 pub use errors::*;
@@ -132,7 +134,13 @@ impl MesuT {
     /// per-executor statistics. `active_tasks`/`queue_depth` reflect this
     /// exact moment; the rest accumulate for the life of the runtime.
     pub fn runtime_state(&self) -> mesut_scheduler::RuntimeState {
-        let mut snapshot = self.coordination.state.lock().runtime_state.clone();
+        let mut snapshot = {
+            let state = self.coordination.state.lock();
+            let mut snapshot = state.runtime_state.clone();
+            snapshot.queued_tasks = state.tasks.values().filter(|e| !e.dispatched).count();
+            snapshot.in_flight_tasks = state.tasks.values().filter(|e| e.dispatched).count();
+            snapshot
+        };
         for executor in self.router.executors() {
             let stats = snapshot
                 .executor_stats
@@ -142,6 +150,11 @@ impl MesuT {
             stats.queue_depth = executor.queue_depth();
         }
         snapshot
+    }
+
+    /// Where the runtime is in its shutdown lifecycle.
+    pub fn shutdown_state(&self) -> ShutdownState {
+        self.coordination.state.lock().runtime_state.shutdown
     }
 
     /// Wait until every admitted task exits. Does not close admission.
@@ -157,13 +170,27 @@ impl MesuT {
         }
     }
 
-    /// Close admission, request cancellation, and wait for jobs and adapters to
-    /// become quiescent. Uncooperative closures can keep this future pending;
-    /// callers can bound their wait with tokio::time::timeout.
+    /// Close admission, request cancellation, and wait for jobs and adapters
+    /// to become quiescent within the configured grace period
+    /// ([`RuntimeConfig::with_shutdown_grace`]). Cooperative work is given
+    /// the whole grace to exit; if the deadline expires with work still
+    /// active, the runtime enters `ShutdownState::ForceTerminated`: queued
+    /// work is cancelled, dispatchable handles are cancelled, and tracked
+    /// bookkeeping is cleared. Closures that never cooperate may still run on
+    /// executor threads afterward — threads cannot be killed, only abandoned.
+    /// Uncooperative callers can bound the wait differently with
+    /// [`MesuT::shutdown_with_grace`].
     pub async fn shutdown(&self) -> TaskResult<()> {
+        self.shutdown_with_grace(self.config.shutdown_grace).await
+    }
+
+    /// [`MesuT::shutdown`] with an explicit grace period; `None` waits
+    /// unboundedly for cooperative work.
+    pub async fn shutdown_with_grace(&self, grace: Option<Duration>) -> TaskResult<()> {
         {
             let mut state = self.coordination.state.lock();
             state.closed = true;
+            state.runtime_state.shutdown = ShutdownState::Draining;
             for entry in state.tasks.values() {
                 entry.token.cancel();
             }
@@ -172,9 +199,31 @@ impl MesuT {
         for executor in self.router.executors() {
             executor.shutdown().await?;
         }
-        self.join().await?;
+        let deadline = grace.map(|grace| Instant::now() + grace);
+        let forced = loop {
+            if self.active_tasks() == 0 {
+                break false;
+            }
+            if deadline.is_some_and(|due| Instant::now() >= due) {
+                break true;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        };
+        if forced {
+            self.coordination.force_terminate().await;
+        }
         for executor in self.router.executors() {
-            executor.shutdown_and_wait().await?;
+            match grace {
+                // Post-drain quiescence is normally instant; bound it so an
+                // abandoned closure cannot hang shutdown past the deadline.
+                Some(grace) => {
+                    let _ = tokio::time::timeout(grace, executor.shutdown_and_wait()).await;
+                }
+                None => executor.shutdown_and_wait().await?,
+            }
+        }
+        if !forced {
+            self.coordination.state.lock().runtime_state.shutdown = ShutdownState::Terminated;
         }
         Ok(())
     }

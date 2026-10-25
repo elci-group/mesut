@@ -13,3 +13,4 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
+libc = "0.2"

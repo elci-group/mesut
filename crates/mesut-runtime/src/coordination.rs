@@ -1,11 +1,11 @@
 use crate::RuntimeConfig;
-use mesut_core::{CancellationToken, Priority, TaskError, TaskId, TaskResult, Work};
+use mesut_core::{CancellationToken, Priority, TaskError, TaskId, TaskResult, TaskTiming, Work};
 use mesut_executor::ArcExecutor;
 use mesut_observe::{EventObserver, TaskEvent};
 use mesut_scheduler::{
     AdaptiveSchedulingPolicy, BackpressurePolicy, DefaultSchedulingPolicy,
     LoadAwareSchedulingPolicy, PrioritySchedulingPolicy, SchedulingCandidate, SchedulingMode,
-    SchedulingPolicy, WorkloadObserver,
+    SchedulingPolicy, ShutdownState, WorkloadObserver,
 };
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
@@ -23,6 +23,8 @@ pub(crate) struct Entry {
     pub dispatched: bool,
     pub cancellation_sent: bool,
     pub deadline: Option<(Instant, Duration)>,
+    pub admitted_at: Instant,
+    pub timing: Arc<TaskTiming>,
 }
 
 #[derive(Default)]
@@ -73,6 +75,12 @@ impl Coordination {
         let label = work.label.clone();
         let timeout = work.timeout.or(self.config.task_timeout);
         let start = Instant::now();
+        // Adopt a caller-attached timing handle (measurement tools) or create
+        // the one this task's phases are recorded into.
+        let timing = work
+            .timing()
+            .unwrap_or_else(|| TaskTiming::new().shared());
+        timing.mark_submitted();
         let deadline = match timeout {
             Some(duration) => Some((
                 start.checked_add(duration).ok_or_else(|| {
@@ -92,6 +100,8 @@ impl Coordination {
             self.reject(work, error.clone());
             return Err(error);
         }
+        #[allow(unused_assignments)]
+        let mut admitted_at: Option<Instant> = None;
         loop {
             let notified = self.changed.notified();
             tokio::pin!(notified);
@@ -132,6 +142,7 @@ impl Coordination {
                     if state.tasks.len() < limit && !reject_busy {
                         let sequence = state.sequence;
                         state.sequence += 1;
+                        admitted_at = Some(Instant::now());
                         state.tasks.insert(
                             id,
                             Entry {
@@ -144,6 +155,9 @@ impl Coordination {
                                 dispatched: false,
                                 cancellation_sent: false,
                                 deadline,
+                                admitted_at: admitted_at
+                                    .unwrap_or_else(Instant::now),
+                                timing: timing.clone(),
                             },
                         );
                         Admission::Accept
@@ -197,6 +211,7 @@ impl Coordination {
         let weak = Arc::downgrade(self);
         let start_weak = weak.clone();
         let executor_id = executor.id();
+        let callback_timing = timing.clone();
         let work = work
             .on_start(move || {
                 if let Some(shared) = start_weak.upgrade() {
@@ -204,11 +219,18 @@ impl Coordination {
                 }
             })
             .on_complete(move |result| {
+                let timing = &callback_timing;
                 if let Some(shared) = weak.upgrade() {
                     let elapsed = start.elapsed();
+                    timing.mark_completed();
+                    let phases = timing.phases();
+                    let execution = timing.execution_time();
+                    // The learned service-time estimate is the measured
+                    // execution phase only — never the queue-inclusive total,
+                    // which would grow with load and corrupt ordering.
                     if result.is_ok() {
-                        if let Some(label) = &label {
-                            shared.workload.record(label, elapsed);
+                        if let (Some(label), Some(execution)) = (&label, execution) {
+                            shared.workload.record(label, execution);
                         }
                     }
                     {
@@ -216,18 +238,21 @@ impl Coordination {
                         state.tasks.remove(&id);
                         match result {
                             Ok(_) => state.runtime_state.add_completion(),
-                            Err(TaskError::Cancelled) => state.runtime_state.add_cancellation(),
+                            Err(TaskError::Cancelled | TaskError::Shutdown) => {
+                                state.runtime_state.add_cancellation()
+                            }
                             Err(_) => state.runtime_state.add_failure(),
                         }
                         state.runtime_state.record_executor_completion(
                             executor_id.to_string(),
                             elapsed.as_millis() as u64,
+                            execution.map_or(0, |d| d.as_millis() as u64),
                             result.is_err(),
                         );
                     }
                     let event = match result {
-                        Ok(_) => TaskEvent::completed(id, elapsed.as_millis()),
-                        Err(TaskError::Cancelled) => {
+                        Ok(_) => TaskEvent::completed(id, elapsed.as_millis(), phases),
+                        Err(TaskError::Cancelled | TaskError::Shutdown) => {
                             TaskEvent::cancelled(id, "Cancellation requested".into())
                         }
                         Err(error) => TaskEvent::failed(id, error.to_string()),
@@ -235,7 +260,8 @@ impl Coordination {
                     shared.observe(event);
                     shared.changed.notify_waiters();
                 }
-            });
+            })
+            .with_timing(timing.clone());
         {
             let mut state = self.state.lock();
             if let Some(entry) = state.tasks.get_mut(&id) {
@@ -297,6 +323,7 @@ impl Coordination {
                     }
                 }
                 let in_flight = state.tasks.values().filter(|e| e.dispatched).count();
+                let now = Instant::now();
                 let id = if in_flight < self.config.max_in_flight {
                     let candidates: Vec<_> = state
                         .tasks
@@ -311,19 +338,23 @@ impl Coordination {
                             priority: e.priority,
                             sequence: e.sequence,
                             executor_active: e.executor.active_tasks(),
-                            expected_duration: e
+                            expected_service_time: e
                                 .pending
                                 .as_ref()
                                 .and_then(|work| work.label.as_deref())
                                 .and_then(|label| self.workload.profile(label))
-                                .map(|profile| profile.mean_duration),
+                                .map(|profile| profile.mean_service_time),
+                            waited: now.duration_since(e.admitted_at),
                         })
                         .collect();
                     match self.config.scheduling {
                         SchedulingMode::Fifo => DefaultSchedulingPolicy.select(&candidates),
                         SchedulingMode::Priority => PrioritySchedulingPolicy.select(&candidates),
                         SchedulingMode::LoadAware => LoadAwareSchedulingPolicy.select(&candidates),
-                        SchedulingMode::Adaptive => AdaptiveSchedulingPolicy.select(&candidates),
+                        SchedulingMode::Adaptive => {
+                            AdaptiveSchedulingPolicy::new(self.config.adaptive_aging)
+                                .select(&candidates)
+                        }
                     }
                 } else {
                     None
@@ -331,7 +362,11 @@ impl Coordination {
                 let next = id.and_then(|id| {
                     state.tasks.get_mut(&id).map(|entry| {
                         entry.dispatched = true;
-                        (entry.pending.take(), entry.executor.clone())
+                        (
+                            entry.pending.take(),
+                            entry.executor.clone(),
+                            entry.timing.clone(),
+                        )
                     })
                 });
                 (expired, cancellations, next)
@@ -342,13 +377,48 @@ impl Coordination {
             for (id, executor) in cancellations {
                 let _ = executor.cancel(id).await;
             }
-            if let Some((Some(work), executor)) = next {
+            if let Some((Some(work), executor, timing)) = next {
+                timing.mark_dispatched();
                 let _ = executor.submit(work).await;
                 // Do not monopolize the Tokio worker while draining a large queue.
                 tokio::task::yield_now().await;
                 continue;
             }
             tokio::select! { _ = &mut notified => (), _ = tokio::time::sleep(Duration::from_millis(1)) => () }
+        }
+    }
+
+    /// Force termination: the shutdown grace period expired with work still
+    /// active. Queued work is cancelled, dispatchable handles are cancelled,
+    /// and every tracked entry is dropped so no bookkeeping outlives the
+    /// runtime's interest in it. Closures that never cooperate may still be
+    /// running on executor threads; their late completions update counters
+    /// but cannot resurrect tracked state.
+    pub async fn force_terminate(self: &Arc<Self>) {
+        let drained: Vec<(TaskId, Option<Work>, ArcExecutor, CancellationToken)> = {
+            let mut state = self.state.lock();
+            state.runtime_state.shutdown = ShutdownState::ForceTerminated;
+            state
+                .tasks
+                .drain()
+                .map(|(id, entry)| {
+                    (
+                        id,
+                        entry.pending,
+                        entry.executor,
+                        entry.token.clone(),
+                    )
+                })
+                .collect()
+        };
+        self.changed.notify_waiters();
+        for (id, pending, executor, token) in drained {
+            if let Some(work) = pending {
+                token.cancel_with(TaskError::Shutdown);
+                work.finish(Err(TaskError::Shutdown));
+            } else {
+                let _ = executor.cancel(id).await;
+            }
         }
     }
 }

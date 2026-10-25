@@ -67,15 +67,17 @@ to a Tokio oneshot receiver. Work without a job returns its payload unchanged.
 Closures routed to Tokio, and futures routed to worker pools, are rejected.
 
 Completion, failure, and cancellation remove runtime and executor task state.
-`Started` is emitted when execution begins. Completion duration currently includes
-queue wait. Callback panics are isolated; callbacks must remain nonblocking and
-run in reverse registration order so internal cleanup precedes user callbacks.
+`Started` is emitted when execution begins. Every completed task reports its
+latency split into four measured phases — queue, dispatch, execution,
+completion — via `TaskEvent::Completed` and `mesut_core::TaskTiming` (see
+"Latency phases" below); the queue-inclusive total is still reported alongside
+them, but nothing schedules on it. Callback panics are isolated; callbacks must
+remain nonblocking and run in reverse registration order so internal cleanup
+precedes user callbacks.
 
 Runtime cancellation aborts Tokio futures. Compute and blocking closures must
 check their cancellation token to stop promptly; running closures remain counted
-until they exit. Shutdown rejects new submissions and requests cancellation,
-but does not wait for running closures. Blocking workers exit after queued jobs
-are drained. Queue depth counts both queued and running tasks, and configured
+until they exit. Queue depth counts both queued and running tasks, and configured
 admission limits are checked under the same lock used to register tasks.
 
 Submission now goes through a coordination layer (`mesut-runtime::coordination`)
@@ -97,37 +99,86 @@ to children.
 work, and `Shed` evicting low-priority queued work to admit high-priority
 work.
 
+## Latency phases
+
+Every task carries a `mesut_core::TaskTiming` handle (created at admission,
+or caller-attached via `Work::with_timing` for tooling that wants to read the
+breakdown directly). At completion the runtime reports four measured phases:
+
+- **queue** — submission until the dispatch decision (includes waiting for
+  admission under backpressure);
+- **dispatch** — the dispatch decision until execution begins, covering the
+  executor handoff and executor-internal queueing;
+- **execution** — the job's own run, from `Started` to job return;
+- **completion** — job return until runtime bookkeeping and callbacks finish.
+
+`TaskEvent::Completed` carries them as `Option<LatencyPhases>` (`None` when a
+task is cancelled or fails before it ever starts). The old behavior — one
+wall-clock number that mixed queue wait into "completion duration" — is gone;
+the queue-inclusive total is still emitted next to the phases for continuity.
+
+Where the platform exposes it (Linux `CLOCK_THREAD_CPUTIME_ID`), synchronous
+compute/blocking jobs also record the thread CPU time they consumed, exposed
+as `TaskTiming::job_cpu_ns`. Async futures deliberately report no CPU figure:
+between awaits the worker runs unrelated tasks, so any per-future attribution
+would be fiction. Process-wide byte counters (`/proc/self/io`) are likewise
+not attributed per task — with parallel workers they cannot be attributed
+honestly — and the runtime does not pretend otherwise.
+
 ## Adaptive scheduling
 
 `Work::with_label("name")` marks a task as a recurring, named workload.
 `mesut-scheduler::WorkloadObserver` keeps a bounded rolling window (default
-16, `RuntimeConfig::with_adaptive_window`) of observed wall-clock durations
-per label, fed from durations the coordination layer already measures for
-telemetry — there is no CPU/IO-time instrumentation, so this is duration
-history only, not a resource-usage profile. `RuntimeConfig::with_scheduling
-(SchedulingMode::Adaptive)` uses that history at dispatch time: within the
-same priority tier, it prefers the queued candidate with the shorter
-historical mean duration for its label (bucketed on a log2 scale so one-off
-outliers don't dominate); unlabeled work, or a label with no history yet, is
-scheduled FIFO among itself and never starved or favored by the unknown
-duration. Priority ordering always wins over duration — a `Critical` task
-with a long history still runs before a `Low` task with a short one.
+16, `RuntimeConfig::with_adaptive_window`) of observed **execution** durations
+per label — the job's own run time, never the queue-inclusive total, so the
+learned estimate is a service-time estimate that does not grow just because
+the system is busy. `RuntimeConfig::with_scheduling(SchedulingMode::Adaptive)`
+uses that history at dispatch time: within the same priority tier, it prefers
+the queued candidate with the shorter historical mean service time for its
+label (bucketed on a log2 scale so one-off outliers don't dominate); unlabeled
+work, or a label with no history yet, is scheduled FIFO among itself and never
+starved or favored by the unknown duration. Priority ordering always wins over
+duration — a `Critical` task with a long history still runs before a `Low`
+task with a short one.
+
+Shortest-service-time-first can hold long work behind any number of fresh
+short tasks. `RuntimeConfig::with_adaptive_aging` (default 250ms) bounds that:
+a candidate whose queue wait exceeds the threshold is promoted to FIFO order
+ahead of fresh work in its tier, so long work waits roughly the threshold plus
+the drain of other aged work — never indefinitely. `None` disables aging.
 `MesuT::workload_profile(label)` exposes what has been learned so far.
 
 This intentionally does not attempt to guess a task's `WorkKind`: `Work::new`
-still requires an explicit, mandatory kind (used for sync/async validation),
-and there is no per-task CPU/IO measurement to base such a guess on. An
-earlier, unused `mesut-router` module attempted CPU%/IO%-based kind
-inference from data nothing ever populated; it has been removed in favor of
-this duration-based scheduling signal, which the runtime actually feeds and
-uses. See `crates/mesut/tests/load.rs` for an end-to-end test that builds
-duration history for two labels under real load and confirms `Adaptive`
-scheduling reorders queued work by it.
+still requires an explicit, mandatory kind (used for sync/async validation).
+Measurements improve ordering within the explicit kind; they do not replace
+it. `crates/mesut/tests/load.rs` verifies the ordering end-to-end under real
+load, including the aging rescue. See `docs/scheduler-evidence.md` and
+`docs/scheduler-bench-results.json` for the measured comparison of FIFO,
+Priority, LoadAware, and Adaptive across eight workload scenarios — including
+the exit-gate result that Adaptive cuts bimodal short-job p50 by ~65% against
+both FIFO and LoadAware while rescuing starved long work at the aging
+threshold and staying within tail budgets everywhere else.
 
-The historical completion reports do not establish production readiness; see
+The historical end-to-end reports do not establish production readiness; see
 `docs/benchmark-methodology.md` and `docs/benchmark-results.json` for
-end-to-end throughput numbers (currently predating this change — see that
-file for why).
+overhead-oriented throughput numbers (still predating the service-time change
+— see that file for why).
+
+## Shutdown lifecycle
+
+`MesuT::shutdown()` closes admission, requests cancellation, and drains
+cooperatively within `RuntimeConfig::with_shutdown_grace` (default 30s;
+`shutdown_with_grace` overrides per call, `None` waits unboundedly). If the
+grace expires with work still active, the runtime enters
+`ShutdownState::ForceTerminated`: queued work is finished with
+`TaskError::Shutdown`, dispatchable handles are cancelled, and tracked
+bookkeeping is cleared — late completions from closures that ignored
+cancellation update counters but cannot resurrect tracked state. Threads
+cannot be killed, so an uncooperative closure may still be running on an
+executor thread afterward; it is simply no longer the runtime's problem. A
+clean drain ends in `ShutdownState::Terminated`. `MesuT::shutdown_state()`
+and `RuntimeState.shutdown` report where the runtime is: `Running`,
+`Draining`, `Terminated`, or `ForceTerminated`.
 
 ## Removed rather than fixed
 
@@ -157,12 +208,17 @@ of left as silent no-ops:
 `MesuT::runtime_state()` returns an `mesut_scheduler::RuntimeState` snapshot:
 cumulative `total_submitted`/`total_completed`/`total_failed`/`total_cancelled`
 counters (every path that terminates a task updates these, including
-pre-admission rejections and `Shed` evictions), plus `executor_stats` keyed by
-executor ID. Per executor, `active_tasks`/`queue_depth` are read fresh from
-the executor at snapshot time; `completed_tasks`/`failed_tasks`/
-`total_wall_ms` accumulate for the runtime's lifetime. There is still no
-CPU-time instrumentation, so `ExecutorStats` has no CPU field — an earlier
-version did, always zero, which was more misleading than not having it.
+pre-admission rejections and `Shed` evictions), the `shutdown` lifecycle
+state, point-in-time `queued_tasks`/`in_flight_tasks` for the runtime as a
+whole, and `executor_stats` keyed by executor ID. Per executor,
+`active_tasks`/`queue_depth` are read fresh from the executor at snapshot
+time; `completed_tasks`/`failed_tasks`/`total_wall_ms`/`busy_ms` accumulate
+for the runtime's lifetime. `busy_ms` is the sum of measured execution time
+of an executor's finished tasks — against a known worker count it yields
+utilisation, which is how the scheduler benchmark computes it. Per-task CPU
+time exists where attributable (synchronous jobs, via `TaskTiming::job_cpu_ns`)
+and is deliberately absent where it is not (async futures);
+`ExecutorStats` has no CPU field for the same reason.
 `crates/mesut/tests/observability.rs` exercises this against a real mix of
 successes, execution failures, a pre-admission rejection, and a cancellation.
 

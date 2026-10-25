@@ -1,8 +1,13 @@
 # End-to-end benchmark methodology
 
+This document covers the overhead-oriented comparison against direct executor
+use. Scheduler-mode evidence (FIFO vs Priority vs LoadAware vs Adaptive) lives
+separately in `docs/scheduler-evidence.md`.
+
 `benchmark-results.json` predates the adaptive-routing change (`Work::label`,
 `SchedulingMode::Adaptive`, the `WorkloadObserver`-backed coordination
-changes). `recorded-source-sha256.txt` has been advanced to the current tree
+changes) and the latency-phase instrumentation.
+`recorded-source-sha256.txt` has been advanced to the current tree
 so future drift is still caught, but it no longer matches these particular
 results — treat `benchmark-results.json` as historical until it is
 re-measured.

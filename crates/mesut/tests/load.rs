@@ -130,16 +130,18 @@ async fn priority_scheduling_reorders_queued_work_under_saturation() {
     runtime.shutdown().await.unwrap();
 }
 
-/// Adaptive scheduling learns per-label duration from real completions, then
-/// uses that history to run historically-fast labeled work ahead of
+/// Adaptive scheduling learns per-label service time from real completions,
+/// then uses that history to run historically-fast labeled work ahead of
 /// historically-slow labeled work at the same priority, even when the slow
-/// work was queued first.
+/// work was queued first. Aging is disabled here so the test isolates pure
+/// service-time ordering; a separate test covers the aging rescue.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn adaptive_scheduling_prefers_labels_with_shorter_learned_duration() {
     let runtime = Arc::new(mixed_runtime(
         RuntimeConfig::new()
             .with_max_in_flight(1)
             .with_max_queue_size(100)
+            .with_adaptive_aging(None)
             .with_scheduling(SchedulingMode::Adaptive),
     ));
 
@@ -166,8 +168,14 @@ async fn adaptive_scheduling_prefers_labels_with_shorter_learned_duration() {
         runtime.submit(work).await.unwrap();
         wait(rx).await.unwrap();
     }
-    assert!(runtime.workload_profile("slow").unwrap().mean_duration >= Duration::from_millis(20));
-    assert!(runtime.workload_profile("fast").unwrap().mean_duration < Duration::from_millis(10));
+    assert!(
+        runtime.workload_profile("slow").unwrap().mean_service_time
+            >= Duration::from_millis(20)
+    );
+    assert!(
+        runtime.workload_profile("fast").unwrap().mean_service_time
+            < Duration::from_millis(10)
+    );
 
     // Saturate the single in-flight slot, then queue slow-labeled work
     // before fast-labeled work at the same priority.
@@ -203,6 +211,92 @@ async fn adaptive_scheduling_prefers_labels_with_shorter_learned_duration() {
 
     let order = order.lock().unwrap().clone();
     assert_eq!(order, ["fast", "fast", "fast", "slow", "slow", "slow"]);
+    runtime.shutdown().await.unwrap();
+}
+
+/// Without aging, shortest-service-time-first ordering can hold a long task
+/// behind any number of fresh short tasks indefinitely. With a queue-wait
+/// threshold configured, a task held past the threshold is promoted to FIFO
+/// order ahead of fresh work in its tier — priority still outranks it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn adaptive_aging_rescues_starved_long_task() {
+    let runtime = Arc::new(mixed_runtime(
+        RuntimeConfig::new()
+            .with_max_in_flight(1)
+            .with_max_queue_size(100)
+            .with_adaptive_aging(Some(Duration::from_millis(100)))
+            .with_scheduling(SchedulingMode::Adaptive),
+    ));
+
+    // Seed distinct histories so ordering is driven by service time.
+    for _ in 0..3 {
+        let work = Work::new(WorkKind::Compute)
+            .with_label("long")
+            .with_job(|_| {
+                std::thread::sleep(Duration::from_millis(30));
+                Ok(vec![])
+            });
+        let (work, rx) = track(work);
+        runtime.submit(work).await.unwrap();
+        wait(rx).await.unwrap();
+    }
+    for _ in 0..3 {
+        let work = Work::new(WorkKind::Compute)
+            .with_label("short")
+            .with_job(|_| {
+                std::thread::sleep(Duration::from_millis(1));
+                Ok(vec![])
+            });
+        let (work, rx) = track(work);
+        runtime.submit(work).await.unwrap();
+        wait(rx).await.unwrap();
+    }
+
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let (started_tx, started_rx) = oneshot::channel();
+    let occupier = Work::new(WorkKind::Compute).with_job(move |_| {
+        let _ = started_tx.send(());
+        release_rx.recv().unwrap();
+        Ok(vec![])
+    });
+    let (occupier, occupier_done) = track(occupier);
+    runtime.submit(occupier).await.unwrap();
+    started_rx.await.unwrap();
+
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let mut receivers = Vec::new();
+    let long = Work::new(WorkKind::Compute)
+        .with_label("long")
+        .with_job(|_| Ok(vec![]))
+        .on_complete({
+            let order = order.clone();
+            move |_| order.lock().unwrap().push("long")
+        });
+    let (long, long_done) = track(long);
+    runtime.submit(long).await.unwrap();
+    // Hold the long task past the 100ms aging threshold before any short
+    // work arrives; without aging it would run after the short work forever.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    for _ in 0..3 {
+        let order = order.clone();
+        let work = Work::new(WorkKind::Compute)
+            .with_label("short")
+            .with_job(|_| Ok(vec![]))
+            .on_complete(move |_| order.lock().unwrap().push("short"));
+        let (work, rx) = track(work);
+        runtime.submit(work).await.unwrap();
+        receivers.push(rx);
+    }
+
+    release_tx.send(()).unwrap();
+    wait(occupier_done).await.unwrap();
+    wait(long_done).await.unwrap();
+    for rx in receivers {
+        wait(rx).await.unwrap();
+    }
+
+    let order = order.lock().unwrap().clone();
+    assert_eq!(order, ["long", "short", "short", "short"]);
     runtime.shutdown().await.unwrap();
 }
 
