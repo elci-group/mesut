@@ -39,6 +39,11 @@ pub struct LabeledProfile {
 pub struct WorkloadObserver {
     window: usize,
     max_labels: usize,
+    /// How long a label's profile stays trusted after its last sample.
+    /// `None` keeps profiles forever (the rolling window only decays when
+    /// the label keeps completing, so a label whose service shape changed
+    /// but rarely runs would otherwise be misordered indefinitely).
+    ttl: Option<Duration>,
     history: RwLock<HashMap<String, VecDeque<Duration>>>,
     last_updated: RwLock<HashMap<String, Instant>>,
     overflow: AtomicUsize,
@@ -53,10 +58,19 @@ impl WorkloadObserver {
         Self {
             window: window.max(1),
             max_labels: max_labels.max(1),
+            ttl: None,
             history: RwLock::new(HashMap::new()),
             last_updated: RwLock::new(HashMap::new()),
             overflow: AtomicUsize::new(0),
         }
+    }
+
+    /// Trust a label's profile only for `ttl` after its most recent sample;
+    /// expired profiles read as unseen work (neutral bucket) until a fresh
+    /// sample arrives.
+    pub fn with_ttl(mut self, ttl: Option<Duration>) -> Self {
+        self.ttl = ttl;
+        self
     }
 
     /// Record one task's measured execution duration under `label`.
@@ -89,11 +103,20 @@ impl WorkloadObserver {
     }
 
     /// The current profile for `label`, or `None` if nothing has been
-    /// recorded for it yet.
+    /// recorded for it yet or the profile has expired past the TTL.
     pub fn profile(&self, label: &str) -> Option<WorkloadProfile> {
         let history = self.history.read();
         let samples = history.get(label)?;
         if samples.is_empty() {
+            return None;
+        }
+        let last_updated = self
+            .last_updated
+            .read()
+            .get(label)
+            .copied()
+            .unwrap_or_else(Instant::now);
+        if self.ttl.is_some_and(|ttl| last_updated.elapsed() > ttl) {
             return None;
         }
         let total: Duration = samples.iter().sum();
@@ -101,12 +124,7 @@ impl WorkloadObserver {
             samples: samples.len(),
             mean_service_time: total / samples.len() as u32,
             max_service_time: samples.iter().copied().max().unwrap_or_default(),
-            last_updated: self
-                .last_updated
-                .read()
-                .get(label)
-                .copied()
-                .unwrap_or_else(Instant::now),
+            last_updated,
         })
     }
 
@@ -216,5 +234,28 @@ mod tests {
         observer.record("alpha", Duration::from_millis(1));
         let names: Vec<String> = observer.profiles().into_iter().map(|p| p.label).collect();
         assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn profile_expires_after_ttl_so_stale_estimates_cannot_persist() {
+        let observer = WorkloadObserver::with_limits(4, 8).with_ttl(Some(Duration::from_millis(40)));
+        observer.record("regime", Duration::from_secs(1));
+        assert!(observer.profile("regime").is_some());
+        std::thread::sleep(Duration::from_millis(60));
+        // A label that stops completing reads as unseen work: its stale
+        // estimate cannot misorder new tasks indefinitely.
+        assert!(observer.profile("regime").is_none());
+        // One fresh sample restores trust with the NEW shape only.
+        observer.record("regime", Duration::from_millis(2));
+        let profile = observer.profile("regime").unwrap();
+        assert_eq!(profile.mean_service_time, Duration::from_millis(2));
+    }
+
+    #[test]
+    fn nil_ttl_keeps_profiles_forever() {
+        let observer = WorkloadObserver::with_limits(4, 8).with_ttl(None);
+        observer.record("steady", Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(observer.profile("steady").is_some());
     }
 }
