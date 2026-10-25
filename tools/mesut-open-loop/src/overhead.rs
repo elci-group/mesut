@@ -9,7 +9,7 @@
 use crate::config::{RunConfig, SchedulerMode};
 use mesut::prelude::*;
 use mesut_benchkit::env as benv;
-use mesut_benchkit::workload::burn;
+use mesut_benchkit::workload::CalibratedBurn;
 use mesut_benchkit::Rng;
 use mesut_scheduler::{SchedulingCandidate, SchedulingPolicy};
 use serde_json::{json, Value};
@@ -63,11 +63,12 @@ fn size_plan(quick: bool) -> Vec<(&'static str, Duration, Vec<usize>)> {
     full
 }
 
-fn body(service: Duration) -> impl FnOnce(mesut::CancellationToken) -> mesut::TaskResult<Vec<u8>> {
+fn body(
+    service: Duration,
+    burn: &'static CalibratedBurn,
+) -> impl FnOnce(mesut::CancellationToken) -> mesut::TaskResult<Vec<u8>> {
     move |_| {
-        if service > Duration::ZERO {
-            burn(service);
-        }
+        burn.burn(service);
         Ok(vec![])
     }
 }
@@ -132,8 +133,18 @@ fn build_mesut(mode: SchedulerMode, workers: usize, telemetry: bool) -> Arc<Mesu
 }
 
 /// One timed cell on one path. Returns wall seconds and process-CPU
-/// nanoseconds consumed for the whole cell.
-async fn timed_cell(path: &str, mode: Option<SchedulerMode>, service: Duration, count: usize, workers: usize, telemetry: bool) -> Result<(f64, u64), String> {
+/// nanoseconds consumed for the whole cell. The burn is cycle-calibrated so
+/// every path performs the same CPU work; the latch is awaited inside each
+/// arm so shutdown never cancels queued work mid-measurement.
+async fn timed_cell(
+    path: &str,
+    mode: Option<SchedulerMode>,
+    service: Duration,
+    count: usize,
+    workers: usize,
+    telemetry: bool,
+    burn: &'static CalibratedBurn,
+) -> Result<(f64, u64), String> {
     let latch = Latch::new(count);
     let cpu_before = benv::process_cpu_ns().unwrap_or(0);
     let began = Instant::now();
@@ -143,14 +154,11 @@ async fn timed_cell(path: &str, mode: Option<SchedulerMode>, service: Duration, 
                 .num_threads(workers)
                 .build()
                 .map_err(|e| e.to_string())?;
-            let body_service = service;
             pool.install(|| {
                 for _ in 0..count {
                     let latch = latch.clone();
                     rayon::spawn(move || {
-                        if body_service > Duration::ZERO {
-                            burn(body_service);
-                        }
+                        burn.burn(service);
                         latch.dec();
                     });
                 }
@@ -159,17 +167,10 @@ async fn timed_cell(path: &str, mode: Option<SchedulerMode>, service: Duration, 
         "direct-tokio" => {
             for _ in 0..count {
                 let latch = latch.clone();
-                if service == Duration::ZERO {
-                    tokio::spawn(async move { latch.dec() });
-                } else {
-                    let handle = tokio::task::spawn_blocking(move || {
-                        burn(service);
-                        latch.dec();
-                    });
-                    // Keep submission unbounded but avoid unbounded JoinHandle
-                    // memory: detach; latch tracks completion.
-                    std::mem::forget(handle);
-                }
+                tokio::task::spawn_blocking(move || {
+                    burn.burn(service);
+                    latch.dec();
+                });
             }
         }
         "mesut" => {
@@ -179,20 +180,24 @@ async fn timed_cell(path: &str, mode: Option<SchedulerMode>, service: Duration, 
                 let latch = latch.clone();
                 let work = Work::new(mesut_core::WorkKind::Compute)
                     .with_hint(mesut::RoutingHint::RequireCompute)
-                    .with_label(format!("ov-{index}"))
-                    .with_job(body(service))
+                    // Eight shared labels: realistic recurring-workload
+                    // history without unbounded cardinality.
+                    .with_label(format!("ov-{}", index % 8))
+                    .with_job(body(service, burn))
                     .on_complete(move |_| latch.dec());
                 runtime
                     .submit(work)
                     .await
                     .map_err(|e| format!("submit: {e}"))?;
             }
+            if !latch.wait(Duration::from_secs(600)) {
+                return Err("mesut cell did not drain in 600s".into());
+            }
             runtime.shutdown().await.map_err(|e| e.to_string())?;
         }
         other => return Err(format!("unknown path {other}")),
     }
-    let drained = latch.wait(Duration::from_secs(600));
-    if !drained {
+    if !latch.wait(Duration::from_secs(600)) {
         return Err("cell did not drain in 600s".into());
     }
     let wall = began.elapsed().as_secs_f64();
@@ -401,6 +406,7 @@ pub fn cmd_overhead(argv: &[String]) -> i32 {
 }
 
 async fn run_overhead(args: &OverheadArgs) -> Result<Value, String> {
+    let burn: &'static CalibratedBurn = Box::leak(Box::new(CalibratedBurn::calibrate()));
     let mut cells = Vec::new();
     for (size_name, service, counts) in size_plan(args.quick) {
         for count in counts {
@@ -415,7 +421,8 @@ async fn run_overhead(args: &OverheadArgs) -> Result<Value, String> {
                     ("mesut", Some(SchedulerMode::Fifo)),
                     ("mesut", Some(SchedulerMode::Adaptive)),
                 ] {
-                    let (wall, cpu_ns) = timed_cell(path, mode, service, count, args.workers, true).await?;
+                    let (wall, cpu_ns) =
+                        timed_cell(path, mode, service, count, args.workers, true, burn).await?;
                     let telemetry = true;
                     cells.push(json!({
                         "size": size_name,
@@ -452,6 +459,7 @@ async fn run_overhead(args: &OverheadArgs) -> Result<Value, String> {
             10_000,
             args.workers,
             false,
+            burn,
         )
         .await?;
         telemetry_off.push(json!({
