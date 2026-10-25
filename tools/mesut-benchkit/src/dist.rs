@@ -141,7 +141,7 @@ impl PriorityDist {
 }
 
 /// Deadline (end-to-end SLA) distribution over submitted tasks.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DeadlineDist {
     #[default]

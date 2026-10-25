@@ -163,7 +163,7 @@ fn spawn_task(
             });
         });
 
-    shared.handles.lock().unwrap().push(tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let submitted_at = Instant::now();
         match runtime.submit(work).await {
             Err(error) => {
@@ -221,7 +221,9 @@ fn spawn_task(
             }
         }
         shared.pending.fetch_sub(1, Ordering::AcqRel);
-    }));
+    });
+    shared.handles.lock().unwrap().push(handle);
+    drop(shared);
 }
 
 pub struct RunOutput {
