@@ -1,0 +1,77 @@
+[1] noop x1000 direct-rayon: wall 0.001s cpu/task 0ns
+[1] noop x1000 direct-tokio: wall 0.003s cpu/task 0ns
+[1] noop x1000 mesut/fifo: wall 0.012s cpu/task 80000ns
+[1] noop x1000 mesut/adaptive: wall 0.027s cpu/task 100000ns
+[2] noop x1000 direct-rayon: wall 0.001s cpu/task 10000ns
+[2] noop x1000 direct-tokio: wall 0.002s cpu/task 0ns
+[2] noop x1000 mesut/fifo: wall 0.011s cpu/task 80000ns
+[2] noop x1000 mesut/adaptive: wall 0.011s cpu/task 70000ns
+[3] noop x1000 direct-rayon: wall 0.001s cpu/task 0ns
+[3] noop x1000 direct-tokio: wall 0.002s cpu/task 10000ns
+[3] noop x1000 mesut/fifo: wall 0.015s cpu/task 90000ns
+[3] noop x1000 mesut/adaptive: wall 0.045s cpu/task 200000ns
+[4] noop x1000 direct-rayon: wall 0.001s cpu/task 10000ns
+[4] noop x1000 direct-tokio: wall 0.002s cpu/task 0ns
+[4] noop x1000 mesut/fifo: wall 0.022s cpu/task 110000ns
+[4] noop x1000 mesut/adaptive: wall 0.011s cpu/task 80000ns
+[5] noop x1000 direct-rayon: wall 0.001s cpu/task 10000ns
+[5] noop x1000 direct-tokio: wall 0.002s cpu/task 0ns
+[5] noop x1000 mesut/fifo: wall 0.020s cpu/task 110000ns
+[5] noop x1000 mesut/adaptive: wall 0.027s cpu/task 140000ns
+[6] noop x1000 direct-rayon: wall 0.001s cpu/task 0ns
+[6] noop x1000 direct-tokio: wall 0.002s cpu/task 0ns
+[6] noop x1000 mesut/fifo: wall 0.013s cpu/task 80000ns
+[6] noop x1000 mesut/adaptive: wall 0.020s cpu/task 110000ns
+[7] noop x1000 direct-rayon: wall 0.001s cpu/task 0ns
+[7] noop x1000 direct-tokio: wall 0.002s cpu/task 0ns
+[7] noop x1000 mesut/fifo: wall 0.037s cpu/task 110000ns
+[7] noop x1000 mesut/adaptive: wall 0.011s cpu/task 60000ns
+[1] noop x10000 direct-rayon: wall 0.004s cpu/task 2000ns
+[1] noop x10000 direct-tokio: wall 0.023s cpu/task 10000ns
+[1] noop x10000 mesut/fifo: wall 0.119s cpu/task 85000ns
+[1] noop x10000 mesut/adaptive: wall 0.206s cpu/task 97000ns
+[2] noop x10000 direct-rayon: wall 0.005s cpu/task 4000ns
+[2] noop x10000 direct-tokio: wall 0.027s cpu/task 9000ns
+[2] noop x10000 mesut/fifo: wall 0.433s cpu/task 159000ns
+[2] noop x10000 mesut/adaptive: wall 0.329s cpu/task 118000ns
+[3] noop x10000 direct-rayon: wall 0.006s cpu/task 5000ns
+[3] noop x10000 direct-tokio: wall 0.029s cpu/task 12000ns
+[3] noop x10000 mesut/fifo: wall 1.380s cpu/task 248000ns
+[3] noop x10000 mesut/adaptive: wall 4.190s cpu/task 523000ns
+[4] noop x10000 direct-rayon: wall 0.005s cpu/task 3000ns
+[4] noop x10000 direct-tokio: wall 0.019s cpu/task 7000ns
+[4] noop x10000 mesut/fifo: wall 0.161s cpu/task 87000ns
+[4] noop x10000 mesut/adaptive: wall 1.735s cpu/task 281000ns
+[5] noop x10000 direct-rayon: wall 0.005s cpu/task 4000ns
+[5] noop x10000 direct-tokio: wall 0.019s cpu/task 7000ns
+[5] noop x10000 mesut/fifo: wall 0.098s cpu/task 70000ns
+[5] noop x10000 mesut/adaptive: wall 0.132s cpu/task 69000ns
+[6] noop x10000 direct-rayon: wall 0.004s cpu/task 2000ns
+[6] noop x10000 direct-tokio: wall 0.015s cpu/task 7000ns
+[6] noop x10000 mesut/fifo: wall 0.088s cpu/task 70000ns
+[6] noop x10000 mesut/adaptive: wall 0.094s cpu/task 72000ns
+[7] noop x10000 direct-rayon: wall 0.004s cpu/task 2000ns
+[7] noop x10000 direct-tokio: wall 0.018s cpu/task 7000ns
+[7] noop x10000 mesut/fifo: wall 0.095s cpu/task 69000ns
+[7] noop x10000 mesut/adaptive: wall 0.131s cpu/task 86000ns
+[1] noop x100000 direct-rayon: wall 0.052s cpu/task 4100ns
+[1] noop x100000 direct-tokio: wall 0.168s cpu/task 6000ns
+[1] noop x100000 mesut/fifo: wall 1.291s cpu/task 75300ns
+[1] noop x100000 mesut/adaptive: wall 42.254s cpu/task 510700ns
+[2] noop x100000 direct-rayon: wall 0.074s cpu/task 5800ns
+[2] noop x100000 direct-tokio: wall 0.215s cpu/task 7900ns
+overhead failed: mesut cell did not drain in 600s
+
+# CONTEXT (2026-10-26, pre-indexed-core baseline)
+# Runtime: mesut at commit dfaa541 WITHOUT the WS2 indexed core (memoization
+# repair only, pre-repair binary). Gate A "before" evidence:
+#   noop x100k:  direct-rayon 0.074s (5.8us cpu/task) | direct-tokio 0.215s
+#                mesut/fifo 1.291s (75us cpu/task)
+#                mesut/adaptive 42.254s (510us cpu/task)  <- 5.7x fifo, 32x rayon
+#   noop x1M adaptive: DID NOT DRAIN within 600s (catastrophic nonlinear
+#   collapse). Root cause: O(depth) candidate construction + per-candidate
+#   profile() lock-and-sum per dispatch scan (both repaired afterwards:
+#   dfaa541 memoization; indexed core this sprint).
+# NOTE: background load present (other agents); absolute numbers indicative,
+# ratios are the signal. See docs/evidence/scheduler-complexity.* for the
+# post-indexed-core characterization.
