@@ -20,6 +20,17 @@ pub struct RuntimeConfig {
     pub backpressure_threshold: usize,
     /// Recent-sample window per label for `SchedulingMode::Adaptive`.
     pub adaptive_window: usize,
+    /// Maximum distinct labels tracked by the Adaptive history. New labels
+    /// beyond the cap schedule from the neutral bucket (FIFO within priority)
+    /// and are counted as overflow, bounding observer memory and dispatch
+    /// scan cost under high-cardinality labeling.
+    pub adaptive_max_labels: usize,
+    /// How long a label's learned service-time profile stays trusted after
+    /// its last sample. `None` disables expiry. Expiry matters when a
+    /// workload's service shape changes while the label runs rarely: without
+    /// it, the stale estimate misorders that label's tasks until the rolling
+    /// window refills (which can be arbitrarily long for rare labels).
+    pub adaptive_profile_ttl: Option<Duration>,
     /// Queue-wait threshold after which `SchedulingMode::Adaptive` promotes a
     /// candidate to FIFO order within its priority tier, bounding starvation
     /// of long work. `None` disables aging (pure shortest-service-time-first).
@@ -42,6 +53,8 @@ impl RuntimeConfig {
             enable_animations: true,
             backpressure_threshold: 1000,
             adaptive_window: 16,
+            adaptive_max_labels: 1024,
+            adaptive_profile_ttl: Some(Duration::from_secs(60)),
             adaptive_aging: Some(Duration::from_millis(250)),
             shutdown_grace: Some(Duration::from_secs(30)),
         }
@@ -80,6 +93,18 @@ impl RuntimeConfig {
     /// Number of recent durations kept per label for `SchedulingMode::Adaptive`.
     pub fn with_adaptive_window(mut self, window: usize) -> Self {
         self.adaptive_window = window;
+        self
+    }
+
+    /// Maximum distinct labels tracked for `SchedulingMode::Adaptive`.
+    pub fn with_adaptive_max_labels(mut self, max_labels: usize) -> Self {
+        self.adaptive_max_labels = max_labels;
+        self
+    }
+
+    /// Profile trust window after a label's last sample; `None` disables.
+    pub fn with_adaptive_profile_ttl(mut self, ttl: Option<Duration>) -> Self {
+        self.adaptive_profile_ttl = ttl;
         self
     }
 

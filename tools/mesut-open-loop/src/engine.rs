@@ -623,6 +623,8 @@ fn summarise(
             "completed": state_at_end.total_completed,
             "failed": state_at_end.total_failed,
             "cancelled": state_at_end.total_cancelled,
+            "rejected": state_at_end.total_rejected,
+            "shed": state_at_end.total_shed,
             "executor_busy_ms": state_at_end.executor_stats.values()
                 .map(|s| s.busy_ms).sum::<u64>(),
         },

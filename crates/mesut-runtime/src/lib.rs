@@ -130,6 +130,18 @@ impl MesuT {
         self.coordination.workload.profile(label)
     }
 
+    /// Every tracked label's service-time profile, sorted by label, with
+    /// profile age (`last_updated`) for staleness inspection (WS6/WS12).
+    pub fn workload_profiles(&self) -> Vec<mesut_scheduler::LabeledProfile> {
+        self.coordination.workload.profiles()
+    }
+
+    /// Times a new label was dropped because
+    /// [`RuntimeConfig::adaptive_max_labels`] was full.
+    pub fn workload_overflow(&self) -> usize {
+        self.coordination.workload.overflow()
+    }
+
     /// A snapshot of cumulative submission/completion counters and
     /// per-executor statistics. `active_tasks`/`queue_depth` reflect this
     /// exact moment; the rest accumulate for the life of the runtime.
@@ -139,6 +151,8 @@ impl MesuT {
             let mut snapshot = state.runtime_state.clone();
             snapshot.queued_tasks = state.tasks.values().filter(|e| !e.dispatched).count();
             snapshot.in_flight_tasks = state.tasks.values().filter(|e| e.dispatched).count();
+            snapshot.queue_latency_us = self.coordination.queue_latency.snapshot();
+            snapshot.execution_latency_us = self.coordination.execution_latency.snapshot();
             snapshot
         };
         for executor in self.router.executors() {

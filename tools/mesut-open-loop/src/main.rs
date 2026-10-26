@@ -12,6 +12,7 @@
 mod config;
 mod engine;
 mod matrix;
+mod realio;
 mod overhead;
 mod soak;
 
@@ -30,10 +31,11 @@ fn main() {
         Some("presets") => cmd_presets(),
         Some("run") => cmd_run(&args[1..]),
         Some("matrix") => crate::matrix::cmd_matrix(&args[1..]),
+        Some("realio") => crate::realio::cmd_realio(&args[1..]),
         Some("overhead") => crate::overhead::cmd_overhead(&args[1..]),
         Some("soak") => crate::soak::cmd_soak(&args[1..]),
         _ => {
-            eprintln!("usage: mesut-open-loop <env|presets|run|matrix|overhead|soak> [options]");
+            eprintln!("usage: mesut-open-loop <env|presets|run|matrix|overhead|soak|realio> [options]");
             2
         }
     };

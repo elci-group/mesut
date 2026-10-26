@@ -11,7 +11,8 @@ pub use mesut_runtime::{
     MesuT, Pipeline, PipelineBuilder, PipelineOutputs, PipelineStage, RuntimeConfig,
 };
 pub use mesut_scheduler::{
-    ExecutorStats, RuntimeState, SchedulingMode, ShutdownState, WorkloadProfile,
+    ExecutorStats, HistogramSnapshot, LabeledProfile, LatencyHistogram, RuntimeState,
+    SchedulingMode, ShutdownState, WorkloadProfile,
 };
 
 pub use mesut_blocking::BlockingExecutor;

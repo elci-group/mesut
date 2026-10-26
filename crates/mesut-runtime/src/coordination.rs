@@ -51,7 +51,8 @@ pub(crate) struct Coordination {
 impl Coordination {
     pub fn new(config: RuntimeConfig, observer: Arc<dyn EventObserver>) -> Arc<Self> {
         let workload =
-            WorkloadObserver::with_limits(config.adaptive_window, config.adaptive_max_labels);
+            WorkloadObserver::with_limits(config.adaptive_window, config.adaptive_max_labels)
+                .with_ttl(config.adaptive_profile_ttl);
         Arc::new(Self {
             state: Mutex::new(State::default()),
             observer: RwLock::new(observer),

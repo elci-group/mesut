@@ -19,6 +19,49 @@ pub fn burn(service: Duration) {
     std::hint::black_box(n);
 }
 
+/// Cycle-calibrated burn: performs roughly the same amount of CPU work per
+/// invocation regardless of machine speed or contention, unlike [`burn`],
+/// whose wall-deadline loop consumes variable CPU under oversubscription.
+/// Calibrate once per process, then clone the iterations-per-ms factor.
+#[derive(Clone, Copy)]
+pub struct CalibratedBurn {
+    iterations_per_ms: f64,
+}
+
+impl CalibratedBurn {
+    /// Measure this host's LCG throughput with a ~30ms spin. Calibration
+    /// cost is paid once per process.
+    pub fn calibrate() -> Self {
+        let probes = 5;
+        let mut iterations_per_ms = 0.0;
+        for _ in 0..probes {
+            let units = 2_000_u64;
+            let began = Instant::now();
+            let mut n = 0xdeadbeef_u64;
+            for _ in 0..units {
+                for _ in 0..512 {
+                    n = n.wrapping_mul(6364136223846793005).wrapping_add(1);
+                }
+            }
+            std::hint::black_box(n);
+            iterations_per_ms += units as f64 / began.elapsed().as_secs_f64() * 1e-3;
+        }
+        Self { iterations_per_ms: iterations_per_ms / probes as f64 }
+    }
+
+    /// Spin approximately `service` worth of calibrated CPU work.
+    pub fn burn(&self, service: Duration) {
+        let units = (self.iterations_per_ms * service.as_secs_f64() * 1e3) as u64;
+        let mut n = 0xdeadbeef_u64;
+        for _ in 0..units {
+            for _ in 0..512 {
+                n = n.wrapping_mul(6364136223846793005).wrapping_add(1);
+            }
+        }
+        std::hint::black_box(n);
+    }
+}
+
 /// Busy-wait that exits early on cooperative cancellation, polling every
 /// ~5ms. Returns `Err(())` if cancelled before `service` elapsed.
 pub fn burn_cooperative(service: Duration, cancelled: &AtomicBool) -> Result<(), ()> {
