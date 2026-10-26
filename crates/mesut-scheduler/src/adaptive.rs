@@ -85,14 +85,12 @@ impl WorkloadObserver {
     pub fn record(&self, label: &str, duration: Duration) {
         {
             let mut history = self.history.write();
-            let expired = self
-                .ttl
-                .is_some_and(|ttl| {
-                    self.last_updated
-                        .read()
-                        .get(label)
-                        .is_some_and(|last| last.elapsed() > ttl)
-                });
+            let expired = self.ttl.is_some_and(|ttl| {
+                self.last_updated
+                    .read()
+                    .get(label)
+                    .is_some_and(|last| last.elapsed() > ttl)
+            });
             let samples = match history.get_mut(label) {
                 Some(samples) => {
                     if expired {

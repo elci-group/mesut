@@ -62,7 +62,9 @@ fn build(max_in_flight: usize, grace: Option<Duration>) -> Arc<MesuT> {
 
 /// Completion callback asserting exactly-once terminal delivery for one
 /// task. A duplicate event panics the test.
-fn exactly_once_terminal(counter: Arc<AtomicUsize>) -> impl FnOnce(&TaskResult<Vec<u8>>) + Send + 'static {
+fn exactly_once_terminal(
+    counter: Arc<AtomicUsize>,
+) -> impl FnOnce(&TaskResult<Vec<u8>>) + Send + 'static {
     move |_| {
         assert_eq!(
             counter.fetch_add(1, Ordering::AcqRel),
@@ -91,7 +93,11 @@ async fn cancellation_before_admission_never_executes() {
     let result = runtime.submit(work).await;
     assert!(result.is_err(), "cancelled submission must be rejected");
     runtime.join().await.unwrap();
-    assert_eq!(ran.load(Ordering::Acquire), 0, "job ran despite pre-admission cancel");
+    assert_eq!(
+        ran.load(Ordering::Acquire),
+        0,
+        "job ran despite pre-admission cancel"
+    );
     assert_eq!(terminal.load(Ordering::Acquire), 1);
     assert_eq!(runtime.active_tasks(), 0);
     runtime.shutdown().await.unwrap();
@@ -224,16 +230,14 @@ async fn scope_cancellation_during_child_completion_keeps_one_terminal_each() {
         let terminal = Arc::new(AtomicUsize::new(0));
         let terminal_for_cb = terminal.clone();
         let (tx, rx) = tokio::sync::oneshot::channel::<TaskResult<Vec<u8>>>();
-        let work = work
-            .with_scope(&scope)
-            .on_complete(move |result| {
-                assert_eq!(
-                    terminal_for_cb.fetch_add(1, Ordering::AcqRel),
-                    0,
-                    "scope child terminated twice"
-                );
-                let _ = tx.send(result.clone());
-            });
+        let work = work.with_scope(&scope).on_complete(move |result| {
+            assert_eq!(
+                terminal_for_cb.fetch_add(1, Ordering::AcqRel),
+                0,
+                "scope child terminated twice"
+            );
+            let _ = tx.send(result.clone());
+        });
         runtime.submit_scoped(&scope, work).await.unwrap();
         rxs.push((rx, terminal));
     }
@@ -332,11 +336,19 @@ async fn force_termination_ignores_uncooperative_closures_without_resurrection()
     std::thread::sleep(Duration::from_millis(150));
     runtime.shutdown().await.unwrap();
     assert_eq!(runtime.shutdown_state(), ShutdownState::ForceTerminated);
-    assert_eq!(runtime.active_tasks(), 0, "tracked state resurrected after force termination");
+    assert_eq!(
+        runtime.active_tasks(),
+        0,
+        "tracked state resurrected after force termination"
+    );
     // Late completions may fire on executor threads; they must not resurrect
     // tracked state or restart the lifecycle.
     for id in &ids {
-        assert_eq!(runtime.task_state(*id), None, "task state resurrected: {id}");
+        assert_eq!(
+            runtime.task_state(*id),
+            None,
+            "task state resurrected: {id}"
+        );
     }
     // Wait out the 700ms closures, then confirm the terminal state holds.
     tokio::time::sleep(Duration::from_millis(900)).await;
@@ -401,7 +413,11 @@ async fn randomized_churn_keeps_lifecycle_integrity() {
         let _ = runtime.cancel(*id).await;
     }
     runtime.join().await.unwrap();
-    assert_eq!(runtime.active_tasks(), 0, "leaked tracked tasks after churn");
+    assert_eq!(
+        runtime.active_tasks(),
+        0,
+        "leaked tracked tasks after churn"
+    );
     runtime.shutdown().await.unwrap();
     assert_eq!(runtime.active_tasks(), 0);
     assert!(matches!(
