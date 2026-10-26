@@ -343,6 +343,15 @@ impl Coordination {
                 let in_flight = state.tasks.values().filter(|e| e.dispatched).count();
                 let now = Instant::now();
                 let id = if in_flight < self.config.max_in_flight {
+                    // Service-time lookups hit the observer's locks and sum
+                    // its window; only Adaptive consumes them, and labels
+                    // repeat heavily within a scan, so memoize per scan.
+                    // Without this, deep queues turn every dispatch into an
+                    // O(depth) lock-and-sum storm (WS5 evidence: the
+                    // 100k-noop collapse).
+                    let wants_service_time =
+                        matches!(self.config.scheduling, SchedulingMode::Adaptive);
+                    let mut profile_cache: HashMap<&str, Option<Duration>> = HashMap::new();
                     let candidates: Vec<_> = state
                         .tasks
                         .iter()
@@ -351,18 +360,41 @@ impl Coordination {
                                 && !e.token.is_cancelled()
                                 && e.executor.is_available()
                         })
-                        .map(|(id, e)| SchedulingCandidate {
-                            task_id: *id,
-                            priority: e.priority,
-                            sequence: e.sequence,
-                            executor_active: e.executor.active_tasks(),
-                            expected_service_time: e
-                                .pending
-                                .as_ref()
-                                .and_then(|work| work.label.as_deref())
-                                .and_then(|label| self.workload.profile(label))
-                                .map(|profile| profile.mean_service_time),
-                            waited: now.duration_since(e.admitted_at),
+                        .map(|(id, e)| {
+                            let expected_service_time = if wants_service_time {
+                                e.pending
+                                    .as_ref()
+                                    .and_then(|work| work.label.as_deref())
+                                    .and_then(|label| {
+                                        match profile_cache.entry(label) {
+                                            std::collections::hash_map::Entry::Occupied(
+                                                occupied,
+                                            ) => *occupied.get(),
+                                            std::collections::hash_map::Entry::Vacant(
+                                                vacant,
+                                            ) => {
+                                                let mean = self
+                                                    .workload
+                                                    .profile(label)
+                                                    .map(|profile| {
+                                                        profile.mean_service_time
+                                                    });
+                                                vacant.insert(mean);
+                                                mean
+                                            }
+                                        }
+                                    })
+                            } else {
+                                None
+                            };
+                            SchedulingCandidate {
+                                task_id: *id,
+                                priority: e.priority,
+                                sequence: e.sequence,
+                                executor_active: e.executor.active_tasks(),
+                                expected_service_time,
+                                waited: now.duration_since(e.admitted_at),
+                            }
                         })
                         .collect();
                     match self.config.scheduling {

@@ -711,8 +711,8 @@ fn parse_args() -> Result<Args> {
             other => return Err(format!("unknown option: {other}").into()),
         }
     }
-    if !(1..=9).contains(&args.repeat) {
-        return Err("repeat must be 1..=9".into());
+    if !(1..=100).contains(&args.repeat) {
+        return Err("repeat must be 1..=100".into());
     }
     Ok(args)
 }

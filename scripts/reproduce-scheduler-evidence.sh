@@ -29,13 +29,16 @@ step "environment capture"
 ./tools/mesut-open-loop/target/release/mesut-open-loop env > "$EV/environment.json"
 
 step "closed-batch scheduler bench (25 repetitions)"
+# NOTE: requires the repeat-cap fix in mesut-sched-bench (1..=100); if this
+# stage fails, rebuild tools and rerun this stage before the gate rollup.
 ./tools/mesut-sched-bench/target/release/mesut-sched-bench --repeat 25 \
-  > "$EV/scheduler-batch-25.json" 2>"$RAW/scheduler-batch-25.log" || fail=1
+  > "$EV/scheduler-batch-25.json" 2>"$RAW/scheduler-batch-25.log" || { fail=1; echo "batch bench failed (see $RAW/scheduler-batch-25.log)"; }
 
 for workload in adversarial-95-4-1 bimodal homogeneous-short deadline-heavy; do
   reps=25
   [[ "$workload" == "deadline-heavy" ]] && reps=15
   step "open-loop matrix: $workload (reps $reps, x0.5..x1.5 capacity)"
+  mkdir -p "$RAW/matrix-$workload"
   ./tools/mesut-open-loop/target/release/mesut-open-loop matrix \
     --preset "$workload" --reps "$reps" --duration 10 --warmup 2 \
     --out "$RAW/matrix-$workload" \

@@ -1,0 +1,14 @@
+{
+  "arch": "x86_64",
+  "cpu_model": "Intel(R) Core(TM) 5 120U",
+  "cpufreq_governor": "powersave",
+  "hostname": "pop-os",
+  "kernel": "6.18.7-76061807-generic",
+  "loadavg_at_start": "7.75 9.35 8.81 3/2434 1682228",
+  "logical_cpus": 12,
+  "mesut_commit": "385d9ab3b97ea0de6a0f755ac829c1627deeb2b4",
+  "mesut_dirty_tree": true,
+  "os": "linux",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "unix_seconds": 1792974547
+}
