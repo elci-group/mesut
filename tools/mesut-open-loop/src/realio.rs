@@ -194,6 +194,7 @@ where
     let completed = Arc::new(AtomicUsize::new(0));
     for index in 0..ops {
         let latencies = latencies.clone();
+        let latencies_wait = latencies.clone();
         let completed = completed.clone();
         let completed_for_cb = completed.clone();
         let timing = mesut::TaskTiming::new().shared();
@@ -221,7 +222,7 @@ where
         while completed_wait.load(Ordering::Acquire) < index {
             if std::time::Instant::now() > deadline {
                 // Hung operation: abort the scenario with what completed.
-                return latencies.lock().unwrap().clone();
+                return latencies_wait.lock().unwrap().clone();
             }
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
